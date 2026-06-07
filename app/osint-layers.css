@@ -1,0 +1,82 @@
+.mapFilterBarExpanded {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.mapHotspotStack button {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.mapHotspotStack button small {
+  grid-column: 2 / 3;
+  overflow: hidden;
+  color: rgba(219,228,239,.52);
+  font-size: 8px;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.realMarker.layer-weather,
+.realMarker.layer-natural {
+  color: #f6c453;
+}
+.realMarker.layer-outages,
+.realMarker.layer-cloudRegions,
+.realMarker.layer-techEvents,
+.realMarker.layer-cybersecurity {
+  color: #a78bfa;
+}
+.realMarker.layer-military,
+.realMarker.layer-conflicts,
+.realMarker.layer-sanctions {
+  color: #ff5a52;
+}
+.realMarker.layer-waterways,
+.realMarker.layer-energy {
+  color: #2dd4bf;
+}
+.realMarker.layer-economic,
+.realMarker.layer-regulations {
+  color: #7eb3ff;
+}
+.realMarker.layer-hotspots,
+.realMarker.layer-newsHotspots {
+  color: #8ee88e;
+}
+.realMarker .markerLabel {
+  min-width: 18px;
+  transform: translate(-50%, -150%);
+  border: 1px solid currentColor;
+  background: rgba(3,8,13,.86);
+  padding: 1px 3px;
+  font-size: 7px;
+  letter-spacing: 0;
+}
+.mapClusterStack {
+  max-height: 260px;
+  overflow: auto;
+}
+.mapClusterStack button span {
+  font-size: 9px;
+}
+.liveEventPopup strong {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.layerGrid label {
+  justify-content: space-between;
+  gap: 8px;
+}
+.layerGrid small {
+  color: var(--muted);
+  font-size: 9px;
+}
+.providerMatrix article,
+.categoryMatrix article,
+.layerLoadModule article {
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .mapFilterBarExpanded {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
