@@ -1,0 +1,399 @@
+.centerStageDeep {
+  grid-template-rows: 48px 350px minmax(390px, auto) minmax(360px, auto) minmax(350px, auto);
+  overflow: auto;
+  padding-right: 2px;
+}
+.tickerTape {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, #0e141c, #080c12);
+  padding: 6px 0;
+}
+.tickerLoop {
+  display: flex;
+  width: max-content;
+  gap: 6px;
+  animation: ticker-scroll 72s linear infinite;
+}
+.tickerLoop:hover {
+  animation-play-state: paused;
+}
+.tickerTape .ticker {
+  min-width: 130px;
+  margin: 0;
+}
+.tickerWorkbench,
+.sectionDashboard {
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: rgba(7, 10, 15, .96);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 10px 28px rgba(0,0,0,.18);
+}
+.tickerWorkbenchHeader {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(320px, 430px);
+  align-items: end;
+  gap: 12px;
+  min-height: 58px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #121821, #0b1017);
+  padding: 10px 12px;
+}
+.tickerWorkbenchHeader h2,
+.depthModule h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+.tickerWorkbenchHeader p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.tickerWorkbenchHeader form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+.tickerWorkbenchHeader input {
+  height: 32px;
+  border: 1px solid var(--line-strong);
+  background: #06090e;
+  padding: 0 10px;
+  outline: none;
+}
+.tickerWorkbenchHeader button,
+.tickerQuickRow button {
+  height: 32px;
+  border: 1px solid rgba(113,240,138,.42);
+  background: rgba(113,240,138,.08);
+  color: var(--green);
+  cursor: pointer;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+.tickerQuickRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+  background: #080c12;
+  padding: 7px 10px;
+}
+.tickerQuickRow button {
+  height: 24px;
+  border-color: var(--line-strong);
+  background: #101721;
+  color: var(--text);
+  padding: 0 8px;
+}
+.tickerQuickRow span {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
+}
+.tickerWorkbenchGrid {
+  display: grid;
+  grid-template-columns: 270px minmax(360px, 1fr) 270px;
+  gap: 8px;
+  padding: 8px;
+}
+.tickerQuoteCard,
+.tickerChartCard,
+.tickerFundamentals,
+.tickerNewsCard,
+.depthModule {
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: #080d13;
+  padding: 10px;
+}
+.tickerQuoteCard {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+.tickerQuoteCard span,
+.tickerQuoteCard small,
+.tickerQuoteCard dt,
+.tickerFundamentals span,
+.depthTable th,
+.depthModule small,
+.categoryMatrix span,
+.providerMatrix span {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.tickerQuoteCard strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+  line-height: 1.25;
+}
+.tickerQuoteCard > b {
+  font-size: 30px;
+  line-height: 1;
+}
+.tickerQuoteCard > em {
+  font-size: 14px;
+  font-style: normal;
+}
+.tickerQuoteCard dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 0;
+}
+.tickerQuoteCard dl div {
+  border: 1px solid #16202c;
+  background: #0d131b;
+  padding: 7px;
+}
+.tickerQuoteCard dd {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+.priceChart {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  min-height: 250px;
+  color: var(--green);
+}
+.priceChart header,
+.priceChart footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.priceChart svg {
+  width: 100%;
+  min-height: 210px;
+  color: currentColor;
+  background:
+    linear-gradient(rgba(126,179,255,.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(126,179,255,.08) 1px, transparent 1px),
+    radial-gradient(circle at 50% 50%, rgba(113,240,138,.08), transparent 54%);
+  background-size: 42px 42px, 42px 42px, auto;
+}
+.chartUnavailable {
+  display: grid;
+  min-height: 210px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+.tickerFundamentals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.tickerFundamentals article,
+.categoryMatrix article,
+.providerMatrix article {
+  border: 1px solid #16202c;
+  background: #0d131b;
+  padding: 8px;
+}
+.tickerFundamentals strong,
+.categoryMatrix b,
+.providerMatrix b {
+  display: block;
+  margin-top: 5px;
+  font-size: 13px;
+}
+.tickerNewsCard {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 7px;
+  max-height: 190px;
+  overflow: auto;
+}
+.tickerNewsCard h3 {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.tickerNewsCard a,
+.alertMatrix a,
+.newsCluster a {
+  display: grid;
+  gap: 4px;
+  border-bottom: 1px solid #151d28;
+  padding-bottom: 7px;
+}
+.tickerNewsCard a span,
+.alertMatrix a span,
+.newsCluster a span {
+  width: max-content;
+  border: 1px solid currentColor;
+  padding: 2px 5px;
+  font-size: 9px;
+}
+.tickerNewsCard a b,
+.alertMatrix a b,
+.newsCluster a b {
+  font-size: 11px;
+  line-height: 1.32;
+}
+.sectionDashboard {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 6px;
+  padding: 6px;
+}
+.depthModule {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 230px;
+  max-height: 360px;
+  overflow: auto;
+}
+.globalView .alertMatrix,
+.newsView .wide,
+.aiView .insightDepth,
+.governmentView .newsCluster:first-child {
+  grid-column: span 2;
+}
+.marketsView .riskDepth,
+.commoditiesView .pressureModule,
+.governmentView .providerMatrix,
+.aiView .providerMatrix {
+  grid-column: span 1;
+}
+.depthTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.depthTable th,
+.depthTable td {
+  border-bottom: 1px solid #151d28;
+  padding: 7px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+.depthTable td span {
+  display: block;
+  margin-top: 2px;
+  color: var(--faint);
+  font-size: 9px;
+}
+.depthHeatmap {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px;
+}
+.depthHeatmap article {
+  min-height: 64px;
+  border: 1px solid #16202c;
+  background: #0d131b;
+  padding: 8px;
+}
+.depthHeatmap article.green {
+  background: linear-gradient(135deg, rgba(113,240,138,.18), rgba(7,12,16,.96));
+}
+.depthHeatmap article.red {
+  background: linear-gradient(135deg, rgba(255,104,104,.18), rgba(7,12,16,.96));
+}
+.depthHeatmap span,
+.depthHeatmap em {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+}
+.depthHeatmap b {
+  display: block;
+  margin: 5px 0;
+  font-size: 11px;
+}
+.riskDepth div,
+.pressureModule div {
+  display: grid;
+  grid-template-columns: 112px 1fr 50px;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.riskDepth i,
+.pressureModule i {
+  height: 7px;
+  border: 1px solid #293647;
+  background: #111821;
+  overflow: hidden;
+}
+.riskDepth i b,
+.pressureModule i b {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--red), var(--yellow), var(--green));
+}
+.categoryMatrix,
+.providerMatrix {
+  grid-template-columns: 1fr 1fr;
+}
+.categoryMatrix h3,
+.providerMatrix h3 {
+  grid-column: 1 / -1;
+}
+.categoryMatrix em,
+.providerMatrix em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+}
+.insightDepth article {
+  border-bottom: 1px solid #151d28;
+  padding-bottom: 8px;
+}
+.insightDepth span {
+  color: var(--text);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.insightDepth p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@media (max-width: 1450px) {
+  .tickerWorkbenchGrid,
+  .sectionDashboard {
+    grid-template-columns: 1fr 1fr;
+  }
+  .tickerChartCard,
+  .tickerNewsCard,
+  .globalView .alertMatrix,
+  .newsView .wide,
+  .aiView .insightDepth,
+  .governmentView .newsCluster:first-child {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 900px) {
+  .tickerWorkbenchHeader,
+  .tickerWorkbenchGrid,
+  .sectionDashboard {
+    grid-template-columns: 1fr;
+  }
+  .tickerChartCard,
+  .tickerNewsCard,
+  .categoryMatrix,
+  .providerMatrix {
+    grid-column: auto;
+  }
+}
