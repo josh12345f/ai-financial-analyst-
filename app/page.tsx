@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { LiveRiskMap } from "./LiveRiskMap";
 
 type Severity = "INFO" | "WATCH" | "ALERT" | "CRITICAL";
 type Group = "index" | "equity" | "sector" | "commodity" | "crypto" | "rates";
@@ -23,10 +24,25 @@ type Snapshot = {
   risks: Record<string, number>;
   breadth: { advancers: number; decliners: number; unchanged: number; averageChange: number | null; riskTone: string; coverage: number };
 };
-
 type DcfInputs = { revenue: number; growth: number; ebitMargin: number; taxRate: number; reinvestment: number; wacc: number; terminalGrowth: number; netDebt: number; shares: number };
 type DcfLookup = { symbol: string; companyName: string | null; price: number | null; source: string | null; status: "ready" | "unavailable"; sources: Record<string, string> };
-const blank: Snapshot = { generatedAt: "", status: {}, markets: [], sectors: [], commodities: [], crypto: [], news: [], events: [], macro: {}, filings: [], regulations: [], insights: {}, risks: {}, breadth: { advancers: 0, decliners: 0, unchanged: 0, averageChange: null, riskTone: "Unavailable", coverage: 0 } };
+
+const blank: Snapshot = {
+  generatedAt: "",
+  status: {},
+  markets: [],
+  sectors: [],
+  commodities: [],
+  crypto: [],
+  news: [],
+  events: [],
+  macro: {},
+  filings: [],
+  regulations: [],
+  insights: {},
+  risks: {},
+  breadth: { advancers: 0, decliners: 0, unchanged: 0, averageChange: null, riskTone: "Unavailable", coverage: 0 }
+};
 const layers = ["Conflicts", "Sanctions", "Energy", "Commodities", "Market stress", "Supply chain", "Regulations", "Central banks", "Inflation", "Real estate", "Cybersecurity", "Social sentiment", "SEC filings", "News hotspots"];
 const nav = ["Global", "Markets", "Commodities", "DCF", "News", "Government", "AI"];
 
@@ -35,7 +51,6 @@ function pct(v: number | null) { return v === null || Number.isNaN(v) ? "Unavail
 function money(v: number | null) { return v === null || Number.isNaN(v) ? "Unavailable" : v > 1000 ? `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : `$${v.toFixed(2)}`; }
 function compact(v: number) { return `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}M`; }
 function when(v: string) { const d = new Date(v); return Number.isNaN(d.getTime()) ? "Unavailable" : d.toLocaleString(); }
-function marker(lat: number, lon: number) { return { left: `${((lon + 180) / 360) * 100}%`, top: `${((90 - lat) / 180) * 100}%` }; }
 function moveClass(v: number | null) { return (v || 0) >= 0 ? "green" : "red"; }
 function validTicker(v: string) { return /^[A-Z0-9.-]{1,15}$/.test(v.trim().toUpperCase()); }
 
@@ -48,9 +63,12 @@ export default function Home() {
 
   async function refresh() {
     setLoading(true);
-    const res = await fetch("/api/snapshot", { cache: "no-store" });
-    setSnapshot(await res.json());
-    setLoading(false);
+    try {
+      const res = await fetch("/api/snapshot", { cache: "no-store" });
+      setSnapshot(await res.json());
+    } finally {
+      setLoading(false);
+    }
   }
   async function ask() {
     setAnswer("Analyzing live app data and source context...");
@@ -82,7 +100,7 @@ export default function Home() {
       <section className="centerStage">
         <div className="tickerStrip">{allInstruments.slice(0, 18).map((m) => <div className="ticker" key={`${m.group}-${m.symbol}`}><span>{m.symbol}</span><b>{money(m.price)}</b><em className={moveClass(m.changePercent)}>{pct(m.changePercent)}</em></div>)}</div>
         <div className="heroGrid">
-          <Panel title="Global Risk Map" className="mapPanel"><Map events={snapshot.events} /></Panel>
+          <Panel title="Global Risk Map" className="mapPanel"><LiveRiskMap events={snapshot.events} /></Panel>
           <Panel title="AI Analyst Panel" className="riskPanel"><RiskStack risks={snapshot.risks} /></Panel>
         </div>
         <div className="dataGrid">
@@ -110,21 +128,10 @@ export default function Home() {
   </main>;
 }
 
-function Panel({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
+function Panel({ title, children, className = "" }: { title: string; children: ReactNode; className?: string }) {
   return <section className={`panel ${className}`}><header><h2>{title}</h2><span>LIVE</span></header><div className="panelBody">{children}</div></section>;
 }
 function Meter({ value }: { value: number }) { return <div className="meter"><i style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div>; }
-function Map({ events }: { events: EventItem[] }) {
-  const selected = events.find((event) => event.severity === "CRITICAL") || events.find((event) => event.severity === "ALERT") || events[0];
-  return <div className="mapCanvas">
-    <div className="mapToolbar"><b>GLOBAL RISK MAP</b><span>{events.length} Events</span><em>TIME RANGE 1H 24H 7D 30D</em></div>
-    <div className="continent northAmerica" /><div className="continent southAmerica" /><div className="continent europe" /><div className="continent africa" /><div className="continent asia" /><div className="continent australia" />
-    <div className="mapLabels"><span>NORTH AMERICA</span><span>EUROPE</span><span>ASIA</span><span>SOUTH AMERICA</span><span>AUSTRALIA</span></div>
-    <div className="mapLegend"><span className="sev-critical">Critical</span><span className="sev-alert">Alert</span><span className="sev-watch">Watch</span><span className="sev-info">Info</span></div>
-    {events.length ? events.slice(0, 80).map((e, i) => <a key={`${e.source}-${i}-${e.title}`} href={e.url} target="_blank" rel="noreferrer" className={`mapMarker ${cls(e.severity)}`} style={marker(e.lat, e.lon)} title={`${e.title}\n${e.source}\n${e.impact}`} />) : <div className="emptyState">No mapped events returned yet. Add GDELT/news keys or wait for live feeds.</div>}
-    {selected ? <a className={`mapPopup ${cls(selected.severity)}`} href={selected.url} target="_blank" rel="noreferrer"><strong>{selected.severity} reported</strong><b>{selected.title}</b><small>{selected.source} | {selected.category} | {when(selected.publishedAt)}</small><p>{selected.impact}</p><em>View details</em></a> : null}
-  </div>;
-}
 function RiskStack({ risks }: { risks: Record<string, number> }) {
   return <div className="riskStack">{Object.entries(risks).sort((a, b) => b[1] - a[1]).map(([k, v]) => <div key={k}><div><b>{k}</b><span>{v} /100</span></div><Meter value={v} /></div>)}</div>;
 }
@@ -160,8 +167,7 @@ function DcfWorkbench({ snapshot }: { snapshot: Snapshot }) {
     setLookupLoading(true);
     try {
       const res = await fetch(`/api/dcf?symbol=${encodeURIComponent(clean)}`, { cache: "no-store" });
-      const data = await res.json();
-      setLookup(data);
+      setLookup(await res.json());
     } finally {
       setLookupLoading(false);
     }
@@ -191,7 +197,7 @@ function DcfWorkbench({ snapshot }: { snapshot: Snapshot }) {
         <table><thead><tr><th>Case</th><th>EV</th><th>Equity</th><th>Value/Share</th><th>Upside</th></tr></thead><tbody>{cases.map((c) => <tr key={c.name}><td><b>{c.name}</b><small>{c.note}</small></td><td>{compact(c.enterpriseValue)}</td><td>{compact(c.equityValue)}</td><td>{money(c.valuePerShare)}</td><td className={moveClass(c.upside)}>{pct(c.upside)}</td></tr>)}</tbody></table>
         <h3>Sensitivity</h3><div className="sensitivity">{[inputs.wacc - 1, inputs.wacc, inputs.wacc + 1].map((w) => [inputs.terminalGrowth - .5, inputs.terminalGrowth, inputs.terminalGrowth + .5].map((g) => { const v = singleDcf({ ...inputs, wacc: w, terminalGrowth: g }, price, "Sens", ""); return <div key={`${w}-${g}`}><b>{money(v.valuePerShare)}</b><span>{w.toFixed(1)}% WACC / {g.toFixed(1)}% g</span></div>; }))}</div>
       </div>
-      <div className="memoBox"><h3>AI Investment Memo Inputs</h3><p>The DCF now accepts typed public ticker symbols. It pulls live quote/profile data when available and keeps assumptions editable instead of inventing missing financial statements.</p><ul><li>Verify revenue, margin, capex, working capital, debt, and shares from SEC filings.</li><li>Compare valuation against live price and current risk stack.</li><li>Use AI assistant to summarize source-backed risks before acting.</li></ul></div>
+      <div className="memoBox"><h3>AI Investment Memo Inputs</h3><p>The DCF accepts typed public ticker symbols. It pulls live quote/profile data when available and keeps assumptions editable instead of inventing missing financial statements.</p><ul><li>Verify revenue, margin, capex, working capital, debt, and shares from SEC filings.</li><li>Compare valuation against live price and current risk stack.</li><li>Use AI assistant to summarize source-backed risks before acting.</li></ul></div>
     </div>
   </section>;
 }
