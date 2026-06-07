@@ -1,0 +1,254 @@
+.tickerDeepGrid {
+  grid-template-columns: 270px minmax(360px, 1fr) 270px;
+}
+.tickerRiskFactors,
+.tickerContextModule,
+.newsFilterModule,
+.layerLoadModule {
+  min-height: 220px;
+}
+.tickerRiskFactors div {
+  display: grid;
+  gap: 6px;
+  border-bottom: 1px solid #151d28;
+  padding-bottom: 8px;
+}
+.tickerRiskFactors header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tickerRiskFactors span,
+.tickerRiskFactors small,
+.tickerContextModule span,
+.tickerContextModule small,
+.layerLoadModule span {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.tickerRiskFactors b,
+.tickerContextModule b,
+.layerLoadModule b {
+  color: var(--text);
+  font-size: 11px;
+}
+.tickerRiskFactors p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.42;
+}
+.tickerRiskFactors i,
+.layerLoadModule i {
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  border: 1px solid #293647;
+  background: #111821;
+}
+.tickerRiskFactors i b,
+.layerLoadModule i em {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--yellow), var(--red));
+}
+.tickerContextModule a,
+.tickerDcfLink {
+  display: grid;
+  gap: 4px;
+  border-bottom: 1px solid #151d28;
+  padding-bottom: 7px;
+}
+.tickerContextModule a > span,
+.tickerNewsCard a span,
+.alertMatrix a span,
+.newsCluster a span {
+  width: max-content;
+  border: 1px solid currentColor;
+  padding: 2px 5px;
+  font-size: 9px;
+}
+.tickerDcfLink {
+  grid-column: 1 / -1;
+  border: 1px solid #1b2b3a;
+  background: #0d141d;
+  padding: 10px;
+}
+.tickerDcfLink strong {
+  color: var(--green);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+.tickerDcfLink span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.newsFilterControls {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) repeat(3, minmax(92px, 120px));
+  gap: 6px;
+}
+.newsFilterControls input,
+.newsFilterControls select {
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  background: #06090e;
+  color: var(--text);
+  padding: 0 8px;
+  font: inherit;
+  font-size: 10px;
+}
+.newsFilterStats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.newsFilterStats article {
+  border: 1px solid #16202c;
+  background: #0d131b;
+  padding: 8px;
+}
+.layerLoadModule article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  border-bottom: 1px solid #151d28;
+  padding-bottom: 7px;
+}
+.layerLoadModule i {
+  grid-column: 1 / -1;
+}
+.mapFilterBar {
+  position: absolute;
+  z-index: 15;
+  top: 46px;
+  left: 54px;
+  right: 12px;
+  display: flex;
+  gap: 5px;
+  pointer-events: auto;
+}
+.mapFilterBar select {
+  min-width: 0;
+  height: 26px;
+  flex: 1 1 0;
+  border: 1px solid rgba(126,179,255,.28);
+  background: rgba(3,8,13,.84);
+  color: #dbeafe;
+  font: inherit;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+.realMarker.riskHot {
+  width: 26px;
+  height: 26px;
+}
+.realMarker.riskHot .markerCore {
+  inset: 2px;
+  box-shadow: 0 0 8px currentColor, 0 0 28px currentColor, 0 0 42px currentColor;
+}
+.mapHotspotStack,
+.mapClusterStack {
+  position: absolute;
+  z-index: 15;
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(126,179,255,.24);
+  background: rgba(3,8,13,.82);
+  padding: 7px;
+  backdrop-filter: blur(8px);
+}
+.mapHotspotStack {
+  left: 12px;
+  bottom: 72px;
+  width: min(340px, calc(100% - 410px));
+  max-height: 190px;
+  overflow: auto;
+}
+.mapHotspotStack header {
+  display: flex;
+  justify-content: space-between;
+  color: #dbeafe;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.mapHotspotStack button,
+.mapClusterStack button {
+  display: grid;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #dbeafe;
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: left;
+}
+.mapHotspotStack button {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px;
+  border-top: 1px solid rgba(126,179,255,.12);
+}
+.mapHotspotStack button span {
+  border: 1px solid currentColor;
+  padding: 2px 4px;
+  font-size: 8px;
+}
+.mapHotspotStack button b,
+.mapClusterStack button span {
+  overflow: hidden;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mapHotspotStack button em,
+.mapClusterStack button b {
+  color: #ff9b3e;
+  font-size: 10px;
+  font-style: normal;
+}
+.mapClusterStack {
+  top: 82px;
+  right: 12px;
+  width: 150px;
+}
+.mapClusterStack button {
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-bottom: 1px solid rgba(126,179,255,.12);
+}
+.mapClusterStack small {
+  grid-column: 1 / -1;
+  color: rgba(219,228,239,.5);
+  font-size: 8px;
+  text-transform: uppercase;
+}
+@media (max-width: 1450px) {
+  .tickerDeepGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .tickerDcfLink {
+    grid-column: 1 / -1;
+  }
+  .newsFilterControls {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 900px) {
+  .tickerDeepGrid,
+  .newsFilterControls,
+  .newsFilterStats {
+    grid-template-columns: 1fr;
+  }
+  .mapFilterBar,
+  .mapHotspotStack,
+  .mapClusterStack {
+    position: relative;
+    inset: auto;
+    width: auto;
+    max-height: none;
+    margin: 6px;
+  }
+}
