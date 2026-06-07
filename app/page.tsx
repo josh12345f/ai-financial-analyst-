@@ -83,6 +83,8 @@ const layerNames: Record<string, string> = {
   newsHotspots: "News Hotspots"
 };
 const nav = ["Global", "Markets", "Commodities", "News", "Government", "AI"];
+const timeRanges = ["1h", "24h", "7d", "30d"];
+const regions = ["Global", "US", "Europe", "Asia", "Middle East", "Latin America"];
 
 function cls(sev: Severity) { return `sev-${sev.toLowerCase()}`; }
 function pct(v: number | null) { return v === null || Number.isNaN(v) ? "Unavailable" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`; }
@@ -92,10 +94,14 @@ function when(v: string) { const d = new Date(v); return Number.isNaN(d.getTime(
 function moveClass(v: number | null) { return (v || 0) >= 0 ? "green" : "red"; }
 function validTicker(v: string) { return /^[A-Z0-9.-]{1,15}$/.test(v.trim().toUpperCase()); }
 function layerLabel(layer: string) { return layerNames[layer] || layer.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase()); }
+function severityRank(sev: Severity) { return sev === "CRITICAL" ? 4 : sev === "ALERT" ? 3 : sev === "WATCH" ? 2 : 1; }
+function avgRisk(risks: Record<string, number>) { const values = Object.values(risks); return values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : 0; }
 
 export default function Home() {
   const [snapshot, setSnapshot] = useState<Snapshot>(blank);
   const [active, setActive] = useState("Global");
+  const [timeRange, setTimeRange] = useState("24h");
+  const [region, setRegion] = useState("Global");
   const [loading, setLoading] = useState(true);
   const [question, setQuestion] = useState("What matters today for markets and my watchlist?");
   const [answer, setAnswer] = useState("Ask the AI analyst about market risk, DCF, SEC filings, commodities, laws, geopolitics, or watchlist exposure.");
@@ -122,29 +128,41 @@ export default function Home() {
   const liveLayers = useMemo(() => (snapshot.layers?.length ? snapshot.layers : defaultLayers), [snapshot.layers]);
   const topRisk = useMemo(() => Object.entries(snapshot.risks).sort((a, b) => b[1] - a[1])[0], [snapshot.risks]);
   const liveSources = Object.values(snapshot.status).filter((v) => v === "ok" || v === "configured").length;
+  const alerts = useMemo(() => [...snapshot.events, ...snapshot.news, ...snapshot.regulations, ...snapshot.filings].filter((x) => x.severity !== "INFO").sort((a, b) => severityRank(b.severity) - severityRank(a.severity)), [snapshot]);
+  const topLayer = liveLayers.slice().sort((a, b) => b.severe - a.severe || b.count - a.count)[0];
+  const bestMover = allInstruments.filter((x) => x.changePercent !== null).sort((a, b) => (b.changePercent || 0) - (a.changePercent || 0))[0];
+  const worstMover = allInstruments.filter((x) => x.changePercent !== null).sort((a, b) => (a.changePercent || 0) - (b.changePercent || 0))[0];
 
   return <main className="terminal">
-    <header className="commandbar">
+    <header className="commandbar commandbarUpgraded">
       <div className="brandBlock"><span className="brandMark">WM</span><div><b>WORLD MARKET WATCHER</b><small>AI financial intelligence terminal</small></div></div>
-      <input className="commandInput" placeholder="Search tickers, filings, laws, macro series, commodities, risks" />
-      <div className="commandStats"><span className="liveDot">LIVE</span><span>{loading ? "Refreshing" : "Synced"}</span><span>{snapshot.events.length} events</span><span>{allInstruments.length} instruments</span><span>{snapshot.generatedAt ? when(snapshot.generatedAt) : "No snapshot"}</span><button onClick={refresh}>Refresh</button></div>
+      <div className="commandSearchCluster">
+        <input className="commandInput" placeholder="Search tickers, filings, laws, macro series, commodities, risks" />
+        <div className="commandControlRow">
+          <span>Range</span>{timeRanges.map((range) => <button key={range} className={timeRange === range ? "selected" : ""} onClick={() => setTimeRange(range)}>{range}</button>)}
+          <select value={region} onChange={(event) => setRegion(event.target.value)}>{regions.map((item) => <option key={item}>{item}</option>)}</select>
+        </div>
+      </div>
+      <div className="commandStats"><span className="liveDot">LIVE</span><span>{loading ? "Refreshing" : "Synced"}</span><span>{snapshot.events.length} events</span><span>{alerts.length} alerts</span><span>{allInstruments.length} instruments</span><span>{snapshot.generatedAt ? when(snapshot.generatedAt) : "No snapshot"}</span><button onClick={refresh}>Refresh</button></div>
     </header>
 
-    <section className="workspace">
-      <aside className="leftRail">
+    <section className="workspace workspaceUpgraded">
+      <aside className="leftRail leftRailUpgraded">
         <div className="railNav">{nav.map((n) => <button key={n} className={active === n ? "selected" : ""} onClick={() => setActive(n)}>{n}</button>)}</div>
         <Panel title="Live Layers"><div className="layerGrid">{liveLayers.map((layer, index) => <label key={`${layer.layer}-${index}`}><span><input type="checkbox" defaultChecked />{layerLabel(layer.layer)}</span><small>{layer.count} events / {layer.severe} severe</small></label>)}</div></Panel>
         <Panel title="Provider Status"><div className="statusList">{Object.entries(snapshot.status).map(([k, v]) => <div key={k}><span>{k}</span><b className={v === "ok" || v === "configured" ? "green" : v === "missing_key" ? "yellow" : "red"}>{v}</b></div>)}</div></Panel>
         <Panel title="Market Breadth"><div className="breadth"><b>{snapshot.breadth.riskTone}</b><span>{snapshot.breadth.advancers} up / {snapshot.breadth.decliners} down</span><Meter value={snapshot.breadth.coverage ? (snapshot.breadth.advancers / snapshot.breadth.coverage) * 100 : 0} /></div></Panel>
+        <QuickCommandPanel active={active} setActive={setActive} />
       </aside>
 
-      <section className="centerStage centerStageDeep">
+      <section className="centerStage centerStageDeep centerStageUpgraded">
         <div className="tickerStrip tickerTape" aria-label="Live sliding market ticker tape">
           <div className="tickerLoop">
             {tickerTape.map((m, index) => <div className="ticker" key={`${m.group}-${m.symbol}-${index}`}><span>{m.symbol}</span><b>{money(m.price)}</b><em className={moveClass(m.changePercent)}>{pct(m.changePercent)}</em></div>)}
           </div>
         </div>
-        <div className="heroGrid">
+        <MissionPulse snapshot={snapshot} alerts={alerts} liveSources={liveSources} topRisk={topRisk} topLayer={topLayer} bestMover={bestMover} worstMover={worstMover} setActive={setActive} timeRange={timeRange} region={region} />
+        <div className="heroGrid heroGridUpgraded">
           <Panel title="Global Risk Map" className="mapPanel"><LiveRiskMap events={snapshot.events} /></Panel>
           <Panel title="AI Analyst Panel" className="riskPanel"><RiskStack risks={snapshot.risks} /></Panel>
         </div>
@@ -153,14 +171,15 @@ export default function Home() {
         <DcfWorkbench snapshot={snapshot} />
       </section>
 
-      <aside className="rightRail">
+      <aside className="rightRail rightRailUpgraded">
         <Panel title="AI Executive Intelligence"><div className="insightList">{Object.entries(snapshot.insights).map(([k, v]) => <article key={k}><b>{k}</b><p>{v}</p></article>)}</div></Panel>
-        <Panel title="Alert Center"><div className="alertList">{[...snapshot.events, ...snapshot.news, ...snapshot.regulations, ...snapshot.filings].filter((x) => x.severity !== "INFO").slice(0, 16).map((x, i) => <a href={x.url} target="_blank" rel="noreferrer" key={`${x.source}-${i}-${x.title}`}><span className={cls(x.severity)}>{x.severity}</span><b>{x.title}</b><small>{x.source} | {x.category}</small></a>)}</div></Panel>
+        <SignalStack alerts={alerts} />
+        <Panel title="Alert Center"><div className="alertList">{alerts.slice(0, 16).map((x, i) => <a href={x.url} target="_blank" rel="noreferrer" key={`${x.source}-${i}-${x.title}`}><span className={cls(x.severity)}>{x.severity}</span><b>{x.title}</b><small>{x.source} | {x.category}</small></a>)}</div></Panel>
         <Panel title="AI Assistant"><div className="assistant"><div className="chatBox">{answer}</div><div className="askBox"><input value={question} onChange={(e) => setQuestion(e.target.value)} /><button onClick={ask}>Ask</button></div></div></Panel>
       </aside>
     </section>
 
-    <section className="bottomDock">
+    <section className="bottomDock bottomDockUpgraded">
       <Feed title="Live News Feed" items={snapshot.news} />
       <Feed title="SEC Filings Monitor" items={snapshot.filings} />
       <Feed title="Government & Regulation Feed" items={snapshot.regulations} />
@@ -174,13 +193,36 @@ function Panel({ title, children, className = "" }: { title: string; children: R
 }
 function Meter({ value }: { value: number }) { return <div className="meter"><i style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div>; }
 function RiskStack({ risks }: { risks: Record<string, number> }) {
-  return <div className="riskStack">{Object.entries(risks).sort((a, b) => b[1] - a[1]).map(([k, v]) => <div key={k}><div><b>{k}</b><span>{v} /100</span></div><Meter value={v} /></div>)}</div>;
+  const score = avgRisk(risks);
+  return <div className="riskStack upgradedRiskStack"><div className="riskDial"><b>{score}</b><span>Composite risk</span><Meter value={score} /></div>{Object.entries(risks).sort((a, b) => b[1] - a[1]).map(([k, v]) => <div key={k}><div><b>{k}</b><span>{v} /100</span></div><Meter value={v} /></div>)}</div>;
 }
 function Feed({ title, items }: { title: string; items: NewsItem[] }) {
   return <section className="feedPanel"><h2>{title}</h2><div>{items.length ? items.slice(0, 12).map((n, i) => <a href={n.url} target="_blank" rel="noreferrer" key={`${n.source}-${i}-${n.title}`}><span className={cls(n.severity)}>{n.severity}</span><b>{n.title}</b><small>{n.source} | {n.category} | {when(n.publishedAt)}</small></a>) : <p className="emptyState">Unavailable from configured providers.</p>}</div></section>;
 }
 function MacroPanel({ snapshot, liveSources, topRisk }: { snapshot: Snapshot; liveSources: number; topRisk?: [string, number] }) {
   return <section className="feedPanel"><h2>Data Status & System Health</h2><div className="macroGrid"><div><b>{liveSources}</b><span>Live Sources</span></div><div><b>{topRisk?.[0] || "Unavailable"}</b><span>Top Risk</span></div>{Object.entries(snapshot.macro).map(([k, v]) => <div key={k}><b>{v}</b><span>{k}</span></div>)}</div></section>;
+}
+function QuickCommandPanel({ active, setActive }: { active: string; setActive: (value: string) => void }) {
+  const items = ["Global", "Markets", "Commodities", "News", "Government", "AI"];
+  return <Panel title="Quick Commands"><div className="quickCommandGrid">{items.map((item) => <button key={item} className={active === item ? "selected" : ""} onClick={() => setActive(item)}>{item}</button>)}<a href="#dcf">DCF Workbench</a><a href="#top">Top</a></div></Panel>;
+}
+function MissionPulse(props: { snapshot: Snapshot; alerts: NewsItem[]; liveSources: number; topRisk?: [string, number]; topLayer?: LayerStat; bestMover?: Instrument; worstMover?: Instrument; setActive: (value: string) => void; timeRange: string; region: string }) {
+  const riskScore = avgRisk(props.snapshot.risks);
+  const severe = props.alerts.filter((item) => item.severity === "CRITICAL" || item.severity === "ALERT").length;
+  const tiles = [
+    { label: "Composite risk", value: `${riskScore}/100`, detail: props.topRisk ? props.topRisk[0] : "No risk stack", tone: riskScore > 70 ? "red" : riskScore > 45 ? "orange" : "green", action: "AI" },
+    { label: "Severe alerts", value: String(severe), detail: `${props.alerts.length} total watch items`, tone: severe ? "orange" : "green", action: "News" },
+    { label: "Dominant layer", value: props.topLayer ? layerLabel(props.topLayer.layer) : "Unavailable", detail: props.topLayer ? `${props.topLayer.count} events, ${props.topLayer.severe} severe` : "No mapped layer", tone: props.topLayer?.severe ? "yellow" : "green", action: "Global" },
+    { label: "Market tape", value: props.snapshot.breadth.riskTone, detail: `${props.snapshot.breadth.advancers} up / ${props.snapshot.breadth.decliners} down`, tone: props.snapshot.breadth.averageChange && props.snapshot.breadth.averageChange < 0 ? "red" : "green", action: "Markets" },
+    { label: "Best / worst", value: props.bestMover ? props.bestMover.symbol : "N/A", detail: `${pct(props.bestMover?.changePercent ?? null)} | ${props.worstMover?.symbol || "N/A"} ${pct(props.worstMover?.changePercent ?? null)}`, tone: "blue", action: "Markets" },
+    { label: "Coverage", value: `${props.liveSources} live`, detail: `${props.region} | ${props.timeRange} view`, tone: "green", action: "Government" }
+  ];
+  return <section className="missionPulse" id="top">{tiles.map((tile) => <button key={tile.label} onClick={() => props.setActive(tile.action)}><span>{tile.label}</span><b className={tile.tone}>{tile.value}</b><small>{tile.detail}</small><i /></button>)}</section>;
+}
+function SignalStack({ alerts }: { alerts: NewsItem[] }) {
+  const [filter, setFilter] = useState<"All" | Severity>("All");
+  const rows = alerts.filter((item) => filter === "All" || item.severity === filter).slice(0, 9);
+  return <Panel title="Signal Stack"><div className="signalStack"><div className="signalTabs">{["All", "WATCH", "ALERT", "CRITICAL"].map((item) => <button key={item} className={filter === item ? "selected" : ""} onClick={() => setFilter(item as "All" | Severity)}>{item}</button>)}</div>{rows.length ? rows.map((item, index) => <a href={item.url} target="_blank" rel="noreferrer" key={`${item.source}-${index}-${item.title}`}><span className={cls(item.severity)}>{item.severity}</span><b>{item.title}</b><small>{item.source} | {item.category} | {when(item.publishedAt)}</small></a>) : <p className="emptyState">No live signals match this filter.</p>}</div></Panel>;
 }
 
 function DcfWorkbench({ snapshot }: { snapshot: Snapshot }) {
