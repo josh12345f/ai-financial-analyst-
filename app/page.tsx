@@ -8,7 +8,8 @@ type Severity = "INFO" | "WATCH" | "ALERT" | "CRITICAL";
 type Group = "index" | "equity" | "sector" | "commodity" | "crypto" | "rates";
 type Instrument = { symbol: string; name: string; price: number | null; changePercent: number | null; source: string; status: string; group: Group; note?: string };
 type NewsItem = { title: string; source: string; url: string; category: string; severity: Severity; publishedAt: string };
-type EventItem = NewsItem & { lat: number; lon: number; summary: string; impact: string };
+type EventItem = NewsItem & { lat: number; lon: number; summary: string; impact: string; layer?: string; confidence?: number };
+type LayerStat = { layer: string; count: number; severe: number; sources: string[] };
 type Snapshot = {
   generatedAt: string;
   status: Record<string, string>;
@@ -18,6 +19,7 @@ type Snapshot = {
   crypto: Instrument[];
   news: NewsItem[];
   events: EventItem[];
+  layers: LayerStat[];
   macro: Record<string, string>;
   filings: NewsItem[];
   regulations: NewsItem[];
@@ -37,6 +39,7 @@ const blank: Snapshot = {
   crypto: [],
   news: [],
   events: [],
+  layers: [],
   macro: {},
   filings: [],
   regulations: [],
@@ -44,8 +47,42 @@ const blank: Snapshot = {
   risks: {},
   breadth: { advancers: 0, decliners: 0, unchanged: 0, averageChange: null, riskTone: "Unavailable", coverage: 0 }
 };
-const layers = ["Conflicts", "Sanctions", "Energy", "Commodities", "Market stress", "Supply chain", "Regulations", "Central banks", "Inflation", "Real estate", "Cybersecurity", "Social sentiment", "SEC filings", "News hotspots"];
-const nav = ["Global", "Markets", "Commodities", "DCF", "News", "Government", "AI"];
+const defaultLayers: LayerStat[] = [
+  { layer: "conflicts", count: 0, severe: 0, sources: [] },
+  { layer: "military", count: 0, severe: 0, sources: [] },
+  { layer: "sanctions", count: 0, severe: 0, sources: [] },
+  { layer: "energy", count: 0, severe: 0, sources: [] },
+  { layer: "waterways", count: 0, severe: 0, sources: [] },
+  { layer: "weather", count: 0, severe: 0, sources: [] },
+  { layer: "natural", count: 0, severe: 0, sources: [] },
+  { layer: "outages", count: 0, severe: 0, sources: [] },
+  { layer: "cloudRegions", count: 0, severe: 0, sources: [] },
+  { layer: "techEvents", count: 0, severe: 0, sources: [] },
+  { layer: "cybersecurity", count: 0, severe: 0, sources: [] },
+  { layer: "economic", count: 0, severe: 0, sources: [] },
+  { layer: "regulations", count: 0, severe: 0, sources: [] },
+  { layer: "hotspots", count: 0, severe: 0, sources: [] }
+];
+const layerNames: Record<string, string> = {
+  conflicts: "Conflicts",
+  bases: "Bases",
+  hotspots: "News Hotspots",
+  nuclear: "Nuclear",
+  sanctions: "Sanctions",
+  weather: "Weather",
+  economic: "Economic",
+  waterways: "Waterways",
+  outages: "Outages",
+  military: "Military / Airspace",
+  natural: "Natural Hazards",
+  energy: "Energy",
+  regulations: "Regulations",
+  cloudRegions: "Cloud / Tech Infra",
+  techEvents: "Tech Events",
+  cybersecurity: "Cybersecurity",
+  newsHotspots: "News Hotspots"
+};
+const nav = ["Global", "Markets", "Commodities", "News", "Government", "AI"];
 
 function cls(sev: Severity) { return `sev-${sev.toLowerCase()}`; }
 function pct(v: number | null) { return v === null || Number.isNaN(v) ? "Unavailable" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`; }
@@ -54,6 +91,7 @@ function compact(v: number) { return `$${v.toLocaleString(undefined, { maximumFr
 function when(v: string) { const d = new Date(v); return Number.isNaN(d.getTime()) ? "Unavailable" : d.toLocaleString(); }
 function moveClass(v: number | null) { return (v || 0) >= 0 ? "green" : "red"; }
 function validTicker(v: string) { return /^[A-Z0-9.-]{1,15}$/.test(v.trim().toUpperCase()); }
+function layerLabel(layer: string) { return layerNames[layer] || layer.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase()); }
 
 export default function Home() {
   const [snapshot, setSnapshot] = useState<Snapshot>(blank);
@@ -81,6 +119,7 @@ export default function Home() {
 
   const allInstruments = useMemo(() => [...snapshot.markets, ...snapshot.sectors, ...snapshot.commodities, ...snapshot.crypto], [snapshot]);
   const tickerTape = useMemo(() => [...allInstruments, ...allInstruments], [allInstruments]);
+  const liveLayers = useMemo(() => (snapshot.layers?.length ? snapshot.layers : defaultLayers), [snapshot.layers]);
   const topRisk = useMemo(() => Object.entries(snapshot.risks).sort((a, b) => b[1] - a[1])[0], [snapshot.risks]);
   const liveSources = Object.values(snapshot.status).filter((v) => v === "ok" || v === "configured").length;
 
@@ -88,13 +127,13 @@ export default function Home() {
     <header className="commandbar">
       <div className="brandBlock"><span className="brandMark">WM</span><div><b>WORLD MARKET WATCHER</b><small>AI financial intelligence terminal</small></div></div>
       <input className="commandInput" placeholder="Search tickers, filings, laws, macro series, commodities, risks" />
-      <div className="commandStats"><span className="liveDot">LIVE</span><span>{loading ? "Refreshing" : "Synced"}</span><span>{snapshot.generatedAt ? when(snapshot.generatedAt) : "No snapshot"}</span><button onClick={refresh}>Refresh</button></div>
+      <div className="commandStats"><span className="liveDot">LIVE</span><span>{loading ? "Refreshing" : "Synced"}</span><span>{snapshot.events.length} events</span><span>{allInstruments.length} instruments</span><span>{snapshot.generatedAt ? when(snapshot.generatedAt) : "No snapshot"}</span><button onClick={refresh}>Refresh</button></div>
     </header>
 
     <section className="workspace">
       <aside className="leftRail">
         <div className="railNav">{nav.map((n) => <button key={n} className={active === n ? "selected" : ""} onClick={() => setActive(n)}>{n}</button>)}</div>
-        <Panel title="Live Layers"><div className="layerGrid">{layers.map((layer) => <label key={layer}><input type="checkbox" defaultChecked />{layer}</label>)}</div></Panel>
+        <Panel title="Live Layers"><div className="layerGrid">{liveLayers.map((layer, index) => <label key={`${layer.layer}-${index}`}><span><input type="checkbox" defaultChecked />{layerLabel(layer.layer)}</span><small>{layer.count} events / {layer.severe} severe</small></label>)}</div></Panel>
         <Panel title="Provider Status"><div className="statusList">{Object.entries(snapshot.status).map(([k, v]) => <div key={k}><span>{k}</span><b className={v === "ok" || v === "configured" ? "green" : v === "missing_key" ? "yellow" : "red"}>{v}</b></div>)}</div></Panel>
         <Panel title="Market Breadth"><div className="breadth"><b>{snapshot.breadth.riskTone}</b><span>{snapshot.breadth.advancers} up / {snapshot.breadth.decliners} down</span><Meter value={snapshot.breadth.coverage ? (snapshot.breadth.advancers / snapshot.breadth.coverage) * 100 : 0} /></div></Panel>
       </aside>
