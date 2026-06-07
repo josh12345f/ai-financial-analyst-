@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./reference.css";
+import "./map.css";
 
 export const metadata: Metadata = {
   title: "World Market Watcher",
