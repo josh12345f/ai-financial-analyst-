@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { SectionDashboard, TickerIntelligence } from "./DashboardDepth";
 import { LiveRiskMap } from "./LiveRiskMap";
 
 type Severity = "INFO" | "WATCH" | "ALERT" | "CRITICAL";
@@ -79,6 +80,7 @@ export default function Home() {
   useEffect(() => { refresh(); const id = setInterval(refresh, 300000); return () => clearInterval(id); }, []);
 
   const allInstruments = useMemo(() => [...snapshot.markets, ...snapshot.sectors, ...snapshot.commodities, ...snapshot.crypto], [snapshot]);
+  const tickerTape = useMemo(() => [...allInstruments, ...allInstruments], [allInstruments]);
   const topRisk = useMemo(() => Object.entries(snapshot.risks).sort((a, b) => b[1] - a[1])[0], [snapshot.risks]);
   const liveSources = Object.values(snapshot.status).filter((v) => v === "ok" || v === "configured").length;
 
@@ -97,24 +99,24 @@ export default function Home() {
         <Panel title="Market Breadth"><div className="breadth"><b>{snapshot.breadth.riskTone}</b><span>{snapshot.breadth.advancers} up / {snapshot.breadth.decliners} down</span><Meter value={snapshot.breadth.coverage ? (snapshot.breadth.advancers / snapshot.breadth.coverage) * 100 : 0} /></div></Panel>
       </aside>
 
-      <section className="centerStage">
-        <div className="tickerStrip">{allInstruments.slice(0, 18).map((m) => <div className="ticker" key={`${m.group}-${m.symbol}`}><span>{m.symbol}</span><b>{money(m.price)}</b><em className={moveClass(m.changePercent)}>{pct(m.changePercent)}</em></div>)}</div>
+      <section className="centerStage centerStageDeep">
+        <div className="tickerStrip tickerTape" aria-label="Live sliding market ticker tape">
+          <div className="tickerLoop">
+            {tickerTape.map((m, index) => <div className="ticker" key={`${m.group}-${m.symbol}-${index}`}><span>{m.symbol}</span><b>{money(m.price)}</b><em className={moveClass(m.changePercent)}>{pct(m.changePercent)}</em></div>)}
+          </div>
+        </div>
         <div className="heroGrid">
           <Panel title="Global Risk Map" className="mapPanel"><LiveRiskMap events={snapshot.events} /></Panel>
           <Panel title="AI Analyst Panel" className="riskPanel"><RiskStack risks={snapshot.risks} /></Panel>
         </div>
-        <div className="dataGrid">
-          <MarketTable title="Major Markets & Stocks" rows={snapshot.markets} />
-          <MarketTable title="Sector Heatmap" rows={snapshot.sectors} compact />
-          <MarketTable title="Commodities / Metals / Energy" rows={snapshot.commodities} />
-          <MarketTable title="Cryptocurrencies" rows={snapshot.crypto} compact />
-        </div>
+        <TickerIntelligence snapshot={snapshot} />
+        <SectionDashboard active={active} snapshot={snapshot} />
         <DcfWorkbench snapshot={snapshot} />
       </section>
 
       <aside className="rightRail">
         <Panel title="AI Executive Intelligence"><div className="insightList">{Object.entries(snapshot.insights).map(([k, v]) => <article key={k}><b>{k}</b><p>{v}</p></article>)}</div></Panel>
-        <Panel title="Alert Center"><div className="alertList">{[...snapshot.events, ...snapshot.news].filter((x) => x.severity !== "INFO").slice(0, 8).map((x, i) => <a href={x.url} target="_blank" rel="noreferrer" key={`${x.source}-${i}-${x.title}`}><span className={cls(x.severity)}>{x.severity}</span><b>{x.title}</b><small>{x.source} | {x.category}</small></a>)}</div></Panel>
+        <Panel title="Alert Center"><div className="alertList">{[...snapshot.events, ...snapshot.news, ...snapshot.regulations, ...snapshot.filings].filter((x) => x.severity !== "INFO").slice(0, 16).map((x, i) => <a href={x.url} target="_blank" rel="noreferrer" key={`${x.source}-${i}-${x.title}`}><span className={cls(x.severity)}>{x.severity}</span><b>{x.title}</b><small>{x.source} | {x.category}</small></a>)}</div></Panel>
         <Panel title="AI Assistant"><div className="assistant"><div className="chatBox">{answer}</div><div className="askBox"><input value={question} onChange={(e) => setQuestion(e.target.value)} /><button onClick={ask}>Ask</button></div></div></Panel>
       </aside>
     </section>
@@ -134,10 +136,6 @@ function Panel({ title, children, className = "" }: { title: string; children: R
 function Meter({ value }: { value: number }) { return <div className="meter"><i style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div>; }
 function RiskStack({ risks }: { risks: Record<string, number> }) {
   return <div className="riskStack">{Object.entries(risks).sort((a, b) => b[1] - a[1]).map(([k, v]) => <div key={k}><div><b>{k}</b><span>{v} /100</span></div><Meter value={v} /></div>)}</div>;
-}
-function MarketTable({ title, rows, compact = false }: { title: string; rows: Instrument[]; compact?: boolean }) {
-  const display = rows.length ? rows : [];
-  return <section className="marketModule"><div className="moduleTitle"><b>{title}</b><span>{display.filter((r) => r.price !== null).length}/{display.length} live</span></div>{display.length ? <table><thead><tr><th>Symbol</th><th>Name</th><th>Last</th><th>Move</th><th>Source</th></tr></thead><tbody>{display.slice(0, compact ? 10 : 14).map((m) => <tr key={`${m.group}-${m.symbol}`}><td><b>{m.symbol}</b></td><td>{m.name}<small>{m.note || m.group}</small></td><td>{money(m.price)}</td><td className={moveClass(m.changePercent)}>{pct(m.changePercent)}</td><td>{m.source}</td></tr>)}</tbody></table> : <div className="emptyState">Data unavailable until provider keys are configured or APIs return data.</div>}</section>;
 }
 function Feed({ title, items }: { title: string; items: NewsItem[] }) {
   return <section className="feedPanel"><h2>{title}</h2><div>{items.length ? items.slice(0, 12).map((n, i) => <a href={n.url} target="_blank" rel="noreferrer" key={`${n.source}-${i}-${n.title}`}><span className={cls(n.severity)}>{n.severity}</span><b>{n.title}</b><small>{n.source} | {n.category} | {when(n.publishedAt)}</small></a>) : <p className="emptyState">Unavailable from configured providers.</p>}</div></section>;
