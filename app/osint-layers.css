@@ -65,8 +65,18 @@
   justify-content: space-between;
   gap: 8px;
 }
+.layerGrid label > span {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .layerGrid small {
   color: var(--muted);
+  flex: 0 0 auto;
   font-size: 9px;
 }
 .providerMatrix article,
