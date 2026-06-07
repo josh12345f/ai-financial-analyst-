@@ -3,6 +3,7 @@ import "./globals.css";
 import "./reference.css";
 import "./map.css";
 import "./depth.css";
+import "./intelligence-extra.css";
 
 export const metadata: Metadata = {
   title: "World Market Watcher",
