@@ -25,6 +25,7 @@ type Snapshot = {
 };
 
 type DcfInputs = { revenue: number; growth: number; ebitMargin: number; taxRate: number; reinvestment: number; wacc: number; terminalGrowth: number; netDebt: number; shares: number };
+type DcfLookup = { symbol: string; companyName: string | null; price: number | null; source: string | null; status: "ready" | "unavailable"; sources: Record<string, string> };
 const blank: Snapshot = { generatedAt: "", status: {}, markets: [], sectors: [], commodities: [], crypto: [], news: [], events: [], macro: {}, filings: [], regulations: [], insights: {}, risks: {}, breadth: { advancers: 0, decliners: 0, unchanged: 0, averageChange: null, riskTone: "Unavailable", coverage: 0 } };
 const layers = ["Conflicts", "Sanctions", "Energy", "Commodities", "Market stress", "Supply chain", "Regulations", "Central banks", "Inflation", "Real estate", "Cybersecurity", "Social sentiment", "SEC filings", "News hotspots"];
 const nav = ["Global", "Markets", "Commodities", "DCF", "News", "Government", "AI"];
@@ -36,6 +37,7 @@ function compact(v: number) { return `$${v.toLocaleString(undefined, { maximumFr
 function when(v: string) { const d = new Date(v); return Number.isNaN(d.getTime()) ? "Unavailable" : d.toLocaleString(); }
 function marker(lat: number, lon: number) { return { left: `${((lon + 180) / 360) * 100}%`, top: `${((90 - lat) / 180) * 100}%` }; }
 function moveClass(v: number | null) { return (v || 0) >= 0 ? "green" : "red"; }
+function validTicker(v: string) { return /^[A-Z0-9.-]{1,15}$/.test(v.trim().toUpperCase()); }
 
 export default function Home() {
   const [snapshot, setSnapshot] = useState<Snapshot>(blank);
@@ -80,29 +82,29 @@ export default function Home() {
       <section className="centerStage">
         <div className="tickerStrip">{allInstruments.slice(0, 18).map((m) => <div className="ticker" key={`${m.group}-${m.symbol}`}><span>{m.symbol}</span><b>{money(m.price)}</b><em className={moveClass(m.changePercent)}>{pct(m.changePercent)}</em></div>)}</div>
         <div className="heroGrid">
-          <Panel title="Global Situation Map" className="mapPanel"><Map events={snapshot.events} /></Panel>
-          <Panel title="AI Risk Stack" className="riskPanel"><RiskStack risks={snapshot.risks} /></Panel>
+          <Panel title="Global Risk Map" className="mapPanel"><Map events={snapshot.events} /></Panel>
+          <Panel title="AI Analyst Panel" className="riskPanel"><RiskStack risks={snapshot.risks} /></Panel>
         </div>
         <div className="dataGrid">
           <MarketTable title="Major Markets & Stocks" rows={snapshot.markets} />
           <MarketTable title="Sector Heatmap" rows={snapshot.sectors} compact />
-          <MarketTable title="Metals, Energy & Commodities" rows={snapshot.commodities} />
-          <MarketTable title="Crypto Market Tape" rows={snapshot.crypto} compact />
+          <MarketTable title="Commodities / Metals / Energy" rows={snapshot.commodities} />
+          <MarketTable title="Cryptocurrencies" rows={snapshot.crypto} compact />
         </div>
         <DcfWorkbench snapshot={snapshot} />
       </section>
 
       <aside className="rightRail">
         <Panel title="AI Executive Intelligence"><div className="insightList">{Object.entries(snapshot.insights).map(([k, v]) => <article key={k}><b>{k}</b><p>{v}</p></article>)}</div></Panel>
-        <Panel title="Alert Center"><div className="alertList">{[...snapshot.events, ...snapshot.news].filter((x) => x.severity !== "INFO").slice(0, 8).map((x, i) => <a href={x.url} target="_blank" key={`${x.source}-${i}-${x.title}`}><span className={cls(x.severity)}>{x.severity}</span><b>{x.title}</b><small>{x.source} | {x.category}</small></a>)}</div></Panel>
+        <Panel title="Alert Center"><div className="alertList">{[...snapshot.events, ...snapshot.news].filter((x) => x.severity !== "INFO").slice(0, 8).map((x, i) => <a href={x.url} target="_blank" rel="noreferrer" key={`${x.source}-${i}-${x.title}`}><span className={cls(x.severity)}>{x.severity}</span><b>{x.title}</b><small>{x.source} | {x.category}</small></a>)}</div></Panel>
         <Panel title="AI Assistant"><div className="assistant"><div className="chatBox">{answer}</div><div className="askBox"><input value={question} onChange={(e) => setQuestion(e.target.value)} /><button onClick={ask}>Ask</button></div></div></Panel>
       </aside>
     </section>
 
     <section className="bottomDock">
-      <Feed title="Live News" items={snapshot.news} />
-      <Feed title="SEC Filing Monitor" items={snapshot.filings} />
-      <Feed title="Government & Regulation" items={snapshot.regulations} />
+      <Feed title="Live News Feed" items={snapshot.news} />
+      <Feed title="SEC Filings Monitor" items={snapshot.filings} />
+      <Feed title="Government & Regulation Feed" items={snapshot.regulations} />
       <MacroPanel snapshot={snapshot} liveSources={liveSources} topRisk={topRisk} />
     </section>
   </main>;
@@ -113,36 +115,64 @@ function Panel({ title, children, className = "" }: { title: string; children: R
 }
 function Meter({ value }: { value: number }) { return <div className="meter"><i style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div>; }
 function Map({ events }: { events: EventItem[] }) {
-  return <div className="mapCanvas"><div className="mapLabels"><span>AMER</span><span>EMEA</span><span>APAC</span></div>{events.length ? events.slice(0, 80).map((e, i) => <a key={`${e.source}-${i}-${e.title}`} href={e.url} target="_blank" className={`mapMarker ${cls(e.severity)}`} style={marker(e.lat, e.lon)} title={`${e.title}\n${e.source}\n${e.impact}`} />) : <div className="emptyState">No mapped events returned yet. Add GDELT/news keys or wait for live feeds.</div>}</div>;
+  const selected = events.find((event) => event.severity === "CRITICAL") || events.find((event) => event.severity === "ALERT") || events[0];
+  return <div className="mapCanvas">
+    <div className="mapToolbar"><b>GLOBAL RISK MAP</b><span>{events.length} Events</span><em>TIME RANGE 1H 24H 7D 30D</em></div>
+    <div className="continent northAmerica" /><div className="continent southAmerica" /><div className="continent europe" /><div className="continent africa" /><div className="continent asia" /><div className="continent australia" />
+    <div className="mapLabels"><span>NORTH AMERICA</span><span>EUROPE</span><span>ASIA</span><span>SOUTH AMERICA</span><span>AUSTRALIA</span></div>
+    <div className="mapLegend"><span className="sev-critical">Critical</span><span className="sev-alert">Alert</span><span className="sev-watch">Watch</span><span className="sev-info">Info</span></div>
+    {events.length ? events.slice(0, 80).map((e, i) => <a key={`${e.source}-${i}-${e.title}`} href={e.url} target="_blank" rel="noreferrer" className={`mapMarker ${cls(e.severity)}`} style={marker(e.lat, e.lon)} title={`${e.title}\n${e.source}\n${e.impact}`} />) : <div className="emptyState">No mapped events returned yet. Add GDELT/news keys or wait for live feeds.</div>}
+    {selected ? <a className={`mapPopup ${cls(selected.severity)}`} href={selected.url} target="_blank" rel="noreferrer"><strong>{selected.severity} reported</strong><b>{selected.title}</b><small>{selected.source} | {selected.category} | {when(selected.publishedAt)}</small><p>{selected.impact}</p><em>View details</em></a> : null}
+  </div>;
 }
 function RiskStack({ risks }: { risks: Record<string, number> }) {
-  return <div className="riskStack">{Object.entries(risks).sort((a, b) => b[1] - a[1]).map(([k, v]) => <div key={k}><div><b>{k}</b><span>{v}%</span></div><Meter value={v} /></div>)}</div>;
+  return <div className="riskStack">{Object.entries(risks).sort((a, b) => b[1] - a[1]).map(([k, v]) => <div key={k}><div><b>{k}</b><span>{v} /100</span></div><Meter value={v} /></div>)}</div>;
 }
 function MarketTable({ title, rows, compact = false }: { title: string; rows: Instrument[]; compact?: boolean }) {
   const display = rows.length ? rows : [];
   return <section className="marketModule"><div className="moduleTitle"><b>{title}</b><span>{display.filter((r) => r.price !== null).length}/{display.length} live</span></div>{display.length ? <table><thead><tr><th>Symbol</th><th>Name</th><th>Last</th><th>Move</th><th>Source</th></tr></thead><tbody>{display.slice(0, compact ? 10 : 14).map((m) => <tr key={`${m.group}-${m.symbol}`}><td><b>{m.symbol}</b></td><td>{m.name}<small>{m.note || m.group}</small></td><td>{money(m.price)}</td><td className={moveClass(m.changePercent)}>{pct(m.changePercent)}</td><td>{m.source}</td></tr>)}</tbody></table> : <div className="emptyState">Data unavailable until provider keys are configured or APIs return data.</div>}</section>;
 }
 function Feed({ title, items }: { title: string; items: NewsItem[] }) {
-  return <section className="feedPanel"><h2>{title}</h2><div>{items.length ? items.slice(0, 12).map((n, i) => <a href={n.url} target="_blank" key={`${n.source}-${i}-${n.title}`}><span className={cls(n.severity)}>{n.severity}</span><b>{n.title}</b><small>{n.source} | {n.category} | {when(n.publishedAt)}</small></a>) : <p className="emptyState">Unavailable from configured providers.</p>}</div></section>;
+  return <section className="feedPanel"><h2>{title}</h2><div>{items.length ? items.slice(0, 12).map((n, i) => <a href={n.url} target="_blank" rel="noreferrer" key={`${n.source}-${i}-${n.title}`}><span className={cls(n.severity)}>{n.severity}</span><b>{n.title}</b><small>{n.source} | {n.category} | {when(n.publishedAt)}</small></a>) : <p className="emptyState">Unavailable from configured providers.</p>}</div></section>;
 }
 function MacroPanel({ snapshot, liveSources, topRisk }: { snapshot: Snapshot; liveSources: number; topRisk?: [string, number] }) {
-  return <section className="feedPanel"><h2>Macro & Source Coverage</h2><div className="macroGrid"><div><b>{liveSources}</b><span>Live Sources</span></div><div><b>{topRisk?.[0] || "Unavailable"}</b><span>Top Risk</span></div>{Object.entries(snapshot.macro).map(([k, v]) => <div key={k}><b>{v}</b><span>{k}</span></div>)}</div></section>;
+  return <section className="feedPanel"><h2>Data Status & System Health</h2><div className="macroGrid"><div><b>{liveSources}</b><span>Live Sources</span></div><div><b>{topRisk?.[0] || "Unavailable"}</b><span>Top Risk</span></div>{Object.entries(snapshot.macro).map(([k, v]) => <div key={k}><b>{v}</b><span>{k}</span></div>)}</div></section>;
 }
 
 function DcfWorkbench({ snapshot }: { snapshot: Snapshot }) {
   const candidates = snapshot.markets.filter((m) => m.group === "equity" || m.group === "index");
   const [symbol, setSymbol] = useState("AAPL");
-  const selected = candidates.find((m) => m.symbol === symbol) || candidates[0];
+  const [lookup, setLookup] = useState<DcfLookup | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const fallback = candidates.find((m) => m.symbol === symbol) || candidates[0] || null;
+  const price = lookup?.price ?? fallback?.price ?? null;
+  const displaySymbol = lookup?.symbol || symbol;
+  const company = lookup?.companyName || fallback?.name || "Public company";
   const [inputs, setInputs] = useState<DcfInputs>({ revenue: 100000, growth: 7, ebitMargin: 24, taxRate: 21, reinvestment: 5, wacc: 9.5, terminalGrowth: 2.5, netDebt: 0, shares: 1000 });
-  const cases = useMemo(() => buildDcf(inputs, selected?.price ?? null), [inputs, selected?.price]);
-  const relatedFilings = snapshot.filings.filter((f) => !selected || f.title.includes(selected.symbol));
-  const relatedNews = snapshot.news.filter((n) => selected && n.title.toUpperCase().includes(selected.symbol)).slice(0, 4);
+  const cases = useMemo(() => buildDcf(inputs, price), [inputs, price]);
+  const relatedFilings = snapshot.filings.filter((f) => f.title.toUpperCase().includes(displaySymbol));
+  const relatedNews = snapshot.news.filter((n) => n.title.toUpperCase().includes(displaySymbol)).slice(0, 4);
+
+  async function runTicker(next = symbol) {
+    const clean = next.trim().toUpperCase();
+    if (!validTicker(clean)) return;
+    setSymbol(clean);
+    setLookupLoading(true);
+    try {
+      const res = await fetch(`/api/dcf?symbol=${encodeURIComponent(clean)}`, { cache: "no-store" });
+      const data = await res.json();
+      setLookup(data);
+    } finally {
+      setLookupLoading(false);
+    }
+  }
 
   return <section className="dcfSection" id="dcf">
-    <div className="dcfHeader"><div><h2>DCF Valuation Workbench</h2><p>Live price plus editable assumptions. Replace inputs with filing-backed values when detailed statements are unavailable.</p></div><select value={selected?.symbol || symbol} onChange={(e) => setSymbol(e.target.value)}>{candidates.map((m) => <option key={m.symbol}>{m.symbol}</option>)}</select></div>
+    <div className="dcfHeader"><div><h2>DCF Valuation Workbench</h2><p>Type any public ticker. Live price and company data load server-side when provider APIs return data.</p></div><form className="dcfTickerSearch" onSubmit={(e) => { e.preventDefault(); runTicker(); }}><label><span>Ticker</span><input value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} placeholder="AAPL, MSFT, BRK.B, TSM" /></label><button disabled={!validTicker(symbol) || lookupLoading}>{lookupLoading ? "Loading" : "Analyze"}</button></form></div>
+    <div className="dcfQuickRow">{["AAPL", "MSFT", "NVDA", "TSLA", "BRK.B", "JPM", "XOM", "TSM", "SHOP"].map((item) => <button key={item} onClick={() => runTicker(item)}>{item}</button>)}<span>Not financial advice. Source-backed fields show unavailable when APIs do not return data.</span></div>
     <div className="dcfGrid">
       <div className="assumptions">
-        <h3>{selected?.symbol || "Ticker"} Model Inputs</h3>
+        <h3>{displaySymbol} Model Inputs</h3>
         <div className="inputGrid">
           <NumberField label="Revenue ($M)" value={inputs.revenue} onChange={(v) => setInputs({ ...inputs, revenue: v })} />
           <NumberField label="Revenue Growth %" value={inputs.growth} onChange={(v) => setInputs({ ...inputs, growth: v })} />
@@ -154,14 +184,14 @@ function DcfWorkbench({ snapshot }: { snapshot: Snapshot }) {
           <NumberField label="Net Debt ($M)" value={inputs.netDebt} onChange={(v) => setInputs({ ...inputs, netDebt: v })} />
           <NumberField label="Shares (M)" value={inputs.shares} onChange={(v) => setInputs({ ...inputs, shares: v })} />
         </div>
-        <div className="sourceBox"><b>Source status</b><span>Market price: {selected?.price ? `${money(selected.price)} from ${selected.source}` : "Unavailable"}</span><span>SEC filings linked: {relatedFilings.length}</span><span>Related ticker news: {relatedNews.length}</span></div>
+        <div className="sourceBox"><b>Source status</b><span>Company: {company}</span><span>Market price: {price ? `${money(price)} from ${lookup?.source || fallback?.source || "provider"}` : "Unavailable"}</span><span>API status: {lookup?.status || fallback?.status || "waiting"}</span><span>SEC filings linked: {relatedFilings.length}</span><span>Related ticker news: {relatedNews.length}</span></div>
       </div>
       <div className="valuationOutput">
         <h3>Scenario Output</h3>
         <table><thead><tr><th>Case</th><th>EV</th><th>Equity</th><th>Value/Share</th><th>Upside</th></tr></thead><tbody>{cases.map((c) => <tr key={c.name}><td><b>{c.name}</b><small>{c.note}</small></td><td>{compact(c.enterpriseValue)}</td><td>{compact(c.equityValue)}</td><td>{money(c.valuePerShare)}</td><td className={moveClass(c.upside)}>{pct(c.upside)}</td></tr>)}</tbody></table>
-        <h3>Sensitivity</h3><div className="sensitivity">{[inputs.wacc - 1, inputs.wacc, inputs.wacc + 1].map((w) => [inputs.terminalGrowth - .5, inputs.terminalGrowth, inputs.terminalGrowth + .5].map((g) => { const v = singleDcf({ ...inputs, wacc: w, terminalGrowth: g }, selected?.price ?? null, "Sens", ""); return <div key={`${w}-${g}`}><b>{money(v.valuePerShare)}</b><span>{w.toFixed(1)}% WACC / {g.toFixed(1)}% g</span></div>; }))}</div>
+        <h3>Sensitivity</h3><div className="sensitivity">{[inputs.wacc - 1, inputs.wacc, inputs.wacc + 1].map((w) => [inputs.terminalGrowth - .5, inputs.terminalGrowth, inputs.terminalGrowth + .5].map((g) => { const v = singleDcf({ ...inputs, wacc: w, terminalGrowth: g }, price, "Sens", ""); return <div key={`${w}-${g}`}><b>{money(v.valuePerShare)}</b><span>{w.toFixed(1)}% WACC / {g.toFixed(1)}% g</span></div>; }))}</div>
       </div>
-      <div className="memoBox"><h3>AI Investment Memo Inputs</h3><p>This module now shows a real DCF engine with editable drivers, market price comparison, filing/source readiness, and sensitivity. It does not pretend unavailable financial statements are facts.</p><ul><li>Verify revenue, margin, capex, working capital, debt, and shares from SEC filings.</li><li>Compare valuation against live price and current risk stack.</li><li>Use AI assistant to summarize source-backed risks before acting.</li></ul></div>
+      <div className="memoBox"><h3>AI Investment Memo Inputs</h3><p>The DCF now accepts typed public ticker symbols. It pulls live quote/profile data when available and keeps assumptions editable instead of inventing missing financial statements.</p><ul><li>Verify revenue, margin, capex, working capital, debt, and shares from SEC filings.</li><li>Compare valuation against live price and current risk stack.</li><li>Use AI assistant to summarize source-backed risks before acting.</li></ul></div>
     </div>
   </section>;
 }
