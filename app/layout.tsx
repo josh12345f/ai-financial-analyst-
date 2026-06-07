@@ -5,6 +5,7 @@ import "./map.css";
 import "./depth.css";
 import "./intelligence-extra.css";
 import "./osint-layers.css";
+import "./visual-upgrade.css";
 
 export const metadata: Metadata = {
   title: "World Market Watcher",
