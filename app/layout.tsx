@@ -6,6 +6,7 @@ import "./depth.css";
 import "./intelligence-extra.css";
 import "./osint-layers.css";
 import "./visual-upgrade.css";
+import "./map-upgrade.css";
 import "./dcf-terminal.css";
 
 export const metadata: Metadata = {
