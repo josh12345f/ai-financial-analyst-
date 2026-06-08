@@ -1,0 +1,292 @@
+.countryMapCanvas {
+  display: grid;
+  grid-template-rows: minmax(410px, 1fr) auto;
+  gap: 0;
+  height: 100%;
+  min-height: 590px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 22%, rgba(27, 98, 138, .28), transparent 28%),
+    radial-gradient(circle at 78% 32%, rgba(43, 150, 105, .16), transparent 28%),
+    #03080d;
+}
+.countryMapCanvas:before { display: none; }
+.countryMapViewport {
+  position: relative;
+  min-height: 410px;
+  height: 100%;
+  overflow: hidden;
+  cursor: grab;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(16, 58, 86, .76), transparent 56%),
+    linear-gradient(180deg, #071724 0%, #02080d 100%);
+}
+.countryMapViewport:active { cursor: grabbing; }
+.countryMapToolbar {
+  position: absolute;
+  z-index: 30;
+  inset: 9px 10px auto 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  border: 1px solid rgba(126, 179, 255, .28);
+  background: rgba(3, 8, 13, .78);
+  padding: 0 8px;
+  backdrop-filter: blur(10px);
+}
+.countryMapToolbar b,
+.countryMapToolbar span,
+.countryMapToolbar em {
+  color: #dbeafe;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.countryMapToolbar span { margin-left: auto; color: #eef6ff; }
+.countryMapToolbar em { color: rgba(219, 228, 239, .58); }
+.countryMapFilters {
+  position: absolute;
+  z-index: 30;
+  top: 47px;
+  left: 54px;
+  right: 12px;
+  display: flex;
+  gap: 5px;
+}
+.countryMapFilters select {
+  min-width: 0;
+  height: 27px;
+  flex: 1 1 0;
+  border: 1px solid rgba(126, 179, 255, .28);
+  background: rgba(3, 8, 13, .86);
+  color: #dbeafe;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.countryMapCanvas .osmTileLayer { position: absolute; inset: 0; z-index: 1; }
+.countryMapCanvas .osmTile {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  max-width: none;
+  pointer-events: none;
+  filter: invert(1) hue-rotate(180deg) saturate(.86) brightness(.5) contrast(1.5);
+  opacity: .98;
+}
+.countryMapCanvas .mapGridOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at center, rgba(91, 181, 255, .1), transparent 34%),
+    linear-gradient(rgba(126, 179, 255, .09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(126, 179, 255, .08) 1px, transparent 1px);
+  background-size: auto, 52px 52px, 52px 52px;
+  opacity: .72;
+}
+.countryLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  width: 100%;
+  height: 100%;
+}
+.countryShape {
+  cursor: pointer;
+  fill: rgba(30, 54, 70, .28);
+  stroke: rgba(126, 179, 255, .24);
+  stroke-width: .8;
+  outline: none;
+  transition: fill 140ms ease, stroke 140ms ease, filter 140ms ease;
+  vector-effect: non-scaling-stroke;
+}
+.countryShape:hover,
+.countryShape:focus-visible {
+  fill: rgba(126, 179, 255, .22);
+  stroke: rgba(190, 224, 255, .84);
+  filter: drop-shadow(0 0 7px rgba(126, 179, 255, .48));
+}
+.countryShape.selected {
+  fill: rgba(126, 179, 255, .3);
+  stroke: rgba(255, 255, 255, .96);
+  stroke-width: 1.25;
+  filter: drop-shadow(0 0 11px rgba(126, 179, 255, .65));
+}
+.countryRiskInfo { fill: rgba(102, 217, 239, .13); stroke: rgba(102, 217, 239, .27); }
+.countryRiskWatch { fill: rgba(246, 205, 90, .17); stroke: rgba(246, 205, 90, .44); }
+.countryRiskAlert { fill: rgba(255, 155, 62, .19); stroke: rgba(255, 155, 62, .54); }
+.countryRiskCritical { fill: rgba(255, 104, 104, .23); stroke: rgba(255, 104, 104, .66); }
+.countryMapVignette {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 0 59%, rgba(0, 0, 0, .52) 100%),
+    linear-gradient(90deg, rgba(2, 8, 13, .46), transparent 18%, transparent 82%, rgba(2, 8, 13, .46));
+}
+.countryMapCanvas .realMarker { z-index: 18; }
+.countryMapCanvas .markerCore { box-shadow: 0 0 8px currentColor, 0 0 24px currentColor, 0 0 44px rgba(255, 255, 255, .12); }
+.countryMapCanvas .osmControls {
+  position: absolute;
+  z-index: 32;
+  top: 84px;
+  left: 12px;
+  display: grid;
+  gap: 5px;
+}
+.countryMapCanvas .osmControls button {
+  min-width: 34px;
+  height: 30px;
+  border: 1px solid rgba(126, 179, 255, .35);
+  background: rgba(5, 10, 16, .86);
+  color: #dbeafe;
+  padding: 0 7px;
+  font-size: 9px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.countryMapCanvas .osmControls button:hover { border-color: rgba(113, 240, 138, .58); color: #71f08a; }
+.countryLegend {
+  position: absolute;
+  z-index: 31;
+  right: 12px;
+  bottom: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border: 1px solid rgba(126, 179, 255, .22);
+  background: rgba(3, 8, 13, .74);
+  padding: 6px 7px;
+  backdrop-filter: blur(8px);
+}
+.countryLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.countryMapCanvas .mapReadout,
+.countryMapCanvas .osmAttribution {
+  position: absolute;
+  z-index: 31;
+  border: 1px solid rgba(126, 179, 255, .18);
+  background: rgba(3, 8, 13, .68);
+  color: rgba(219, 228, 239, .62);
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.countryMapCanvas .mapReadout { left: 12px; bottom: 28px; display: flex; gap: 8px; padding: 5px 7px; }
+.countryMapCanvas .osmAttribution { right: 10px; bottom: 7px; padding: 3px 5px; }
+.countryMapDock {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(230px, .8fr) minmax(205px, .62fr);
+  gap: 8px;
+  min-height: 166px;
+  max-height: 242px;
+  overflow: hidden;
+  border-top: 1px solid rgba(126, 179, 255, .18);
+  background: linear-gradient(180deg, rgba(4, 11, 18, .99), rgba(5, 8, 12, .99));
+  padding: 8px;
+}
+.countryInspector,
+.countryMapDock .mapHotspotStack,
+.countryMapDock .mapClusterStack {
+  position: relative;
+  inset: auto;
+  width: auto;
+  max-height: none;
+  overflow: auto;
+  border: 1px solid rgba(126, 179, 255, .22);
+  background: rgba(5, 10, 16, .74);
+  padding: 8px;
+}
+.countryInspector {
+  display: grid;
+  grid-template-columns: minmax(0, 1.14fr) minmax(250px, .86fr);
+  align-content: start;
+  gap: 8px;
+}
+.countryInspector > header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.countryInspector > header div { display: grid; gap: 2px; min-width: 0; }
+.countryInspector small,
+.selectedCountryEvent span,
+.selectedCountryEvent small,
+.countryImpact span,
+.countrySignalGrid span,
+.countryEventList small {
+  overflow: hidden;
+  color: rgba(219, 228, 239, .56);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.countryInspector b { color: #eef6ff; font-size: 12px; font-weight: 950; }
+.countryInspector > header b { overflow: hidden; font-size: 14px; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.severityBadge { border: 1px solid currentColor; padding: 3px 6px; font-size: 9px; font-weight: 900; text-transform: uppercase; }
+.selectedCountryEvent,
+.countryImpact,
+.countryEventList { display: grid; gap: 6px; min-width: 0; border-top: 1px solid rgba(126, 179, 255, .14); padding-top: 7px; }
+.selectedCountryEvent div { display: flex; justify-content: space-between; gap: 8px; }
+.selectedCountryEvent p,
+.countryImpact p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: #c7d0d8;
+  font-size: 10px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.selectedCountryEvent a,
+.countryEventList a { color: #7ea6ff; font-size: 9px; font-weight: 900; text-decoration: none; text-transform: uppercase; }
+.countrySignalGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.countrySignalGrid article { display: grid; gap: 3px; border: 1px solid rgba(126, 179, 255, .14); background: rgba(255, 255, 255, .025); padding: 6px; }
+.countrySignalGrid b { font-size: 11px; }
+.countryEventList { grid-column: 1 / -1; max-height: 92px; overflow: auto; }
+.countryEventList a { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; border-bottom: 1px solid rgba(126, 179, 255, .1); padding: 5px 0; }
+.countryEventList span { overflow: hidden; color: #dbeafe; text-overflow: ellipsis; white-space: nowrap; }
+.countryMapDock .mapHotspotStack,
+.countryMapDock .mapClusterStack { display: grid; align-content: start; gap: 4px; }
+.countryMapDock .mapHotspotStack header,
+.countryMapDock .mapClusterStack header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #dbeafe; font-size: 10px; font-weight: 900; text-transform: uppercase; }
+.countryMapDock .mapHotspotStack button,
+.countryMapDock .mapClusterStack button { min-height: 30px; }
+.countryMapDock .mapClusterStack button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; text-align: left; }
+.countryMapDock .mapClusterStack button small { grid-column: 1 / -1; }
+@media (max-width: 1180px) {
+  .countryMapDock { grid-template-columns: 1fr; max-height: none; }
+  .countryInspector { grid-template-columns: 1fr; }
+  .countryEventList { max-height: 145px; }
+}
+@media (max-width: 720px) {
+  .countryMapCanvas { min-height: 760px; grid-template-rows: minmax(360px, 1fr) auto; }
+  .countryMapViewport { min-height: 360px; }
+  .countryMapToolbar { align-items: flex-start; flex-direction: column; gap: 2px; padding: 6px 8px; }
+  .countryMapToolbar span { margin-left: 0; }
+  .countryMapFilters { top: 92px; left: 12px; flex-direction: column; }
+  .countryMapCanvas .osmControls { top: 156px; }
+  .countrySignalGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .countryEventList a { grid-template-columns: auto minmax(0, 1fr); }
+  .countryEventList small { grid-column: 2; }
+}
