@@ -4,7 +4,8 @@ export const dynamic = "force-dynamic";
 
 type SourceState = "ok" | "missing_key" | "unavailable" | "error";
 type Severity = "INFO" | "WATCH" | "ALERT" | "CRITICAL";
-type AlphaStatement = { annualReports?: Array<Record<string, string>>; quarterlyReports?: Array<Record<string, string>> };
+type AlphaStatement = { annualReports?: Array<Record<string, unknown>>; quarterlyReports?: Array<Record<string, unknown>> };
+type SecFacts = { facts?: Record<string, Record<string, { units?: Record<string, Array<Record<string, unknown>>> }>> };
 type NewsRow = { title: string; source: string; url: string; category: string; severity: Severity; publishedAt: string; summary?: string };
 type FinancialYear = {
   fiscalYear: string;
@@ -67,7 +68,6 @@ type Scenario = {
 type ForecastRow = { scenario: string; year: number; revenue: number | null; freeCashFlow: number | null; presentValueFcf: number | null };
 type SensitivityRow = { wacc: number; values: Array<{ terminalGrowthRate: number; valuePerShare: number | null }> };
 type Prediction = { label: string; prediction: string; probability: number; timeHorizon: string; evidence: string[]; watchItems: string[] };
-
 type DcfLookup = {
   symbol: string;
   companyName: string | null;
@@ -147,9 +147,9 @@ export async function GET(request: Request) {
   const [quote, overview, income, cashFlow, balance, riskFree] = await Promise.all([
     configured(finnhubKey) ? finnhubQuote(symbol, finnhubKey!, sources) : Promise.resolve(null),
     configured(alphaKey) ? alphaFetch<Record<string, string>>("OVERVIEW", symbol, alphaKey!, sources, "AlphaVantageOverview") : Promise.resolve(null),
-    configured(alphaKey) ? alphaFetch<AlphaStatement>("INCOME_STATEMENT", symbol, alphaKey!, sources, "AlphaVantageIncome") : Promise.resolve(null),
-    configured(alphaKey) ? alphaFetch<AlphaStatement>("CASH_FLOW", symbol, alphaKey!, sources, "AlphaVantageCashFlow") : Promise.resolve(null),
-    configured(alphaKey) ? alphaFetch<AlphaStatement>("BALANCE_SHEET", symbol, alphaKey!, sources, "AlphaVantageBalance") : Promise.resolve(null),
+    configured(alphaKey) ? alphaStatement("INCOME_STATEMENT", symbol, alphaKey!, sources, "AlphaVantageIncome") : Promise.resolve(null),
+    configured(alphaKey) ? alphaStatement("CASH_FLOW", symbol, alphaKey!, sources, "AlphaVantageCashFlow") : Promise.resolve(null),
+    configured(alphaKey) ? alphaStatement("BALANCE_SHEET", symbol, alphaKey!, sources, "AlphaVantageBalance") : Promise.resolve(null),
     configured(fredKey) ? fredRiskFree(fredKey!, sources) : Promise.resolve(null)
   ]);
 
@@ -162,31 +162,35 @@ export async function GET(request: Request) {
   }
   if (!configured(fredKey)) sources.FRED10Y = "missing_key";
 
-  const cik = normalizeCik(overview?.CIK);
-  const [news, filings] = await Promise.all([
-    tickerNews(symbol, text(overview?.Name) || null, sources),
-    secFilings(symbol, cik, sources)
+  let cik = normalizeCik(overview?.CIK);
+  if (!cik) cik = await secTickerCik(symbol, sources);
+
+  const [news, filings, companyFacts] = await Promise.all([
+    tickerNews(symbol, text(overview?.Name) || symbol, sources),
+    secFilings(symbol, cik, sources),
+    secCompanyFacts(cik, sources)
   ]);
 
-  const historical = buildHistorical(income, cashFlow, balance);
+  const historical = mergeHistorical(buildAlphaHistorical(income, cashFlow, balance), buildSecHistorical(companyFacts));
   const latest = historical[0] ?? null;
   const price = quote?.price ?? null;
-  const companyName = text(overview?.Name) || null;
+  const companyName = text(overview?.Name) || symbol;
+  const overviewShares = number(overview?.SharesOutstanding);
+  const marketCap = number(overview?.MarketCapitalization) ?? (price != null && overviewShares ? price * overviewShares : null);
+  const shares = overviewShares ?? latest?.shares ?? (marketCap != null && price ? marketCap / price : null);
   const revenue = latest?.revenue ?? number(overview?.RevenueTTM);
-  const marketCap = number(overview?.MarketCapitalization) ?? (price != null && latest?.shares ? price * latest.shares : null);
-  const shares = number(overview?.SharesOutstanding) ?? latest?.shares ?? (marketCap != null && price ? marketCap / price : null);
-  const netDebt = latest?.netDebt ?? null;
-  const revenueGrowthTrend = trendGrowth(historical);
-  const fcfMargin = average(historical.slice(0, 3).map((row) => row.fcfMargin).filter(isNumber));
-  const taxRate = latest?.taxRate ?? clamp(number(overview?.TaxRate) ?? 0.21, 0.05, 0.35);
+  const revenueGrowthTrend = trendGrowth(historical) ?? number(overview?.QuarterlyRevenueGrowthYOY) ?? sourceFallbackGrowth(sources);
+  const fcfMargin = average(historical.slice(0, 3).map((row) => row.fcfMargin).filter(isNumber)) ?? fallbackFcfMargin(overview, sources);
+  const modeledNetDebt = latest?.netDebt ?? neutralNetDebtFallback(sources);
+  const taxRate = latest?.taxRate ?? clamp(number(overview?.EffectiveTaxRate) ?? 0.21, 0.05, 0.35);
   const beta = number(overview?.Beta) ?? 1;
-  const debt = latest?.totalDebt ?? 0;
+  const debt = latest?.totalDebt ?? Math.max(0, modeledNetDebt);
   const riskFreeRate = riskFree ?? 0.045;
   const preTaxCostOfDebt = costOfDebt(historical) ?? 0.055;
   const wacc = buildWacc({ riskFreeRate, beta, taxRate, marketCap, debt, preTaxCostOfDebt });
-  const scenarios = buildScenarios({ revenue, revenueGrowthTrend, fcfMargin, netDebt, shares, price, wacc, latest, marketCap });
+  const scenarios = buildScenarios({ revenue, revenueGrowthTrend, fcfMargin, netDebt: modeledNetDebt, shares, price, wacc, latest, marketCap });
   const forecasts = scenarios.flatMap((scenario) => buildForecastRows(revenue, scenario));
-  const sensitivity = buildSensitivity({ revenue, fcfMargin, netDebt, shares, wacc: wacc.wacc, price });
+  const sensitivity = buildSensitivity({ revenue, revenueGrowth: revenueGrowthTrend, fcfMargin, netDebt: modeledNetDebt, shares, wacc: wacc.wacc });
   const predictions = buildPredictions({ scenarios, price, analystTargetPrice: number(overview?.AnalystTargetPrice), historical, news, filings, wacc });
   const research = buildResearch({ symbol, companyName, overview, historical, scenarios, news, filings, wacc, predictions, sources });
   const modelReady = scenarios.some((scenario) => scenario.intrinsicValuePerShare != null);
@@ -219,12 +223,12 @@ export async function GET(request: Request) {
       taxes: latest?.taxes ?? null,
       operatingCashFlow: latest?.operatingCashFlow ?? null,
       capex: latest?.capex ?? null,
-      freeCashFlow: latest?.freeCashFlow ?? null,
+      freeCashFlow: latest?.freeCashFlow ?? (revenue != null && fcfMargin != null ? revenue * fcfMargin : null),
       fcfMargin,
       workingCapital: latest?.workingCapital ?? null,
       cash: latest?.cash ?? null,
       totalDebt: latest?.totalDebt ?? null,
-      netDebt,
+      netDebt: latest?.netDebt ?? modeledNetDebt,
       shares,
       revenueGrowthTrend
     },
@@ -240,6 +244,7 @@ export async function GET(request: Request) {
       configured(alphaKey) ? { label: "Alpha Vantage overview", url: `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${symbol}` } : null,
       price != null ? { label: "Finnhub quote", url: `https://finnhub.io/quote/${symbol}` } : null,
       cik ? { label: "SEC EDGAR submissions", url: `https://data.sec.gov/submissions/CIK${cik}.json` } : null,
+      cik ? { label: "SEC CompanyFacts", url: `https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json` } : null,
       configured(fredKey) ? { label: "FRED DGS10", url: "https://fred.stlouisfed.org/series/DGS10" } : null
     ].filter((item): item is { label: string; url: string } => Boolean(item))
   } satisfies DcfLookup, { headers: { "Cache-Control": "no-store" } });
@@ -268,6 +273,18 @@ async function alphaFetch<T>(fn: string, symbol: string, apiKey: string, sources
   }
 }
 
+async function alphaStatement(fn: string, symbol: string, apiKey: string, sources: Record<string, SourceState>, sourceKey: string) {
+  try {
+    const payload = await fetchJson<AlphaStatement>(`https://www.alphavantage.co/query?function=${fn}&symbol=${encodeURIComponent(symbol)}&apikey=${encodeURIComponent(apiKey)}`);
+    const rows = payload?.annualReports ?? [];
+    sources[sourceKey] = rows.length ? "ok" : "unavailable";
+    return rows.length ? payload : null;
+  } catch {
+    sources[sourceKey] = "error";
+    return null;
+  }
+}
+
 async function fredRiskFree(apiKey: string, sources: Record<string, SourceState>) {
   try {
     const payload = await fetchJson<{ observations?: Array<{ value?: string }> }>(`https://api.stlouisfed.org/fred/series/observations?series_id=DGS10&api_key=${encodeURIComponent(apiKey)}&file_type=json&sort_order=desc&limit=1`);
@@ -276,6 +293,33 @@ async function fredRiskFree(apiKey: string, sources: Record<string, SourceState>
     return value == null ? null : value / 100;
   } catch {
     sources.FRED10Y = "error";
+    return null;
+  }
+}
+
+async function secTickerCik(symbol: string, sources: Record<string, SourceState>) {
+  try {
+    const payload = await fetchJson<Record<string, { cik_str?: number; ticker?: string; title?: string }>>("https://www.sec.gov/files/company_tickers.json", secHeaders());
+    const match = Object.values(payload ?? {}).find((row) => text(row.ticker).toUpperCase() === symbol);
+    sources.SECTickerMap = match?.cik_str ? "ok" : "unavailable";
+    return match?.cik_str ? normalizeCik(match.cik_str) : "";
+  } catch {
+    sources.SECTickerMap = "error";
+    return "";
+  }
+}
+
+async function secCompanyFacts(cik: string, sources: Record<string, SourceState>) {
+  if (!cik) {
+    sources.SECCompanyFacts = "unavailable";
+    return null;
+  }
+  try {
+    const payload = await fetchJson<SecFacts>(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`, secHeaders());
+    sources.SECCompanyFacts = payload?.facts ? "ok" : "unavailable";
+    return payload?.facts ? payload : null;
+  } catch {
+    sources.SECCompanyFacts = "error";
     return null;
   }
 }
@@ -339,22 +383,21 @@ async function secFilings(symbol: string, cik: string, sources: Record<string, S
     return [] as NewsRow[];
   }
   try {
-    const userAgent = process.env.SEC_USER_AGENT || "WorldMarketWatcher/1.0 contact@example.com";
-    const payload = await fetchJson<Record<string, any>>(`https://data.sec.gov/submissions/CIK${cik}.json`, { "User-Agent": userAgent });
-    const recent = payload?.filings?.recent;
+    const payload = await fetchJson<Record<string, unknown>>(`https://data.sec.gov/submissions/CIK${cik}.json`, secHeaders());
+    const recent = (payload?.filings as Record<string, unknown> | undefined)?.recent as Record<string, unknown[]> | undefined;
     const rows: NewsRow[] = [];
     for (let index = 0; index < Math.min(12, recent?.accessionNumber?.length || 0); index += 1) {
-      const form = text(recent.form?.[index]);
-      const accession = text(recent.accessionNumber?.[index]);
-      const primary = text(recent.primaryDocument?.[index]);
+      const form = text(recent?.form?.[index]);
+      const accession = text(recent?.accessionNumber?.[index]);
+      const primary = text(recent?.primaryDocument?.[index]);
       rows.push({
         title: `${symbol} ${form} filing`,
         source: "SEC EDGAR",
         url: `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${accession.replace(/-/g, "")}/${primary}`,
         category: "SEC Filing",
         severity: ["8-K", "10-K", "10-Q", "S-1", "S-3"].includes(form) ? "WATCH" : "INFO",
-        publishedAt: text(recent.filingDate?.[index]) || new Date().toISOString(),
-        summary: text(recent.primaryDocDescription?.[index]) || primary || "SEC filing"
+        publishedAt: text(recent?.filingDate?.[index]) || new Date().toISOString(),
+        summary: text(recent?.primaryDocDescription?.[index]) || primary || "SEC filing"
       });
     }
     sources.SECFilings = rows.length ? "ok" : "unavailable";
@@ -365,58 +408,143 @@ async function secFilings(symbol: string, cik: string, sources: Record<string, S
   }
 }
 
-function buildHistorical(income: AlphaStatement | null, cashFlow: AlphaStatement | null, balance: AlphaStatement | null) {
+function buildAlphaHistorical(income: AlphaStatement | null, cashFlow: AlphaStatement | null, balance: AlphaStatement | null) {
   const incomeRows = income?.annualReports ?? [];
-  const cashRows = new Map((cashFlow?.annualReports ?? []).map((row) => [row.fiscalDateEnding, row]));
-  const balanceRows = new Map((balance?.annualReports ?? []).map((row) => [row.fiscalDateEnding, row]));
-  const ascending = incomeRows.slice().sort((a, b) => Date.parse(a.fiscalDateEnding) - Date.parse(b.fiscalDateEnding));
+  const cashRows = new Map((cashFlow?.annualReports ?? []).map((row) => [text(row.fiscalDateEnding), row]));
+  const balanceRows = new Map((balance?.annualReports ?? []).map((row) => [text(row.fiscalDateEnding), row]));
+  const ascending = incomeRows.slice().sort((a, b) => Date.parse(text(a.fiscalDateEnding)) - Date.parse(text(b.fiscalDateEnding)));
   const rows = ascending.map((incomeRow, index) => {
-    const date = incomeRow.fiscalDateEnding;
+    const date = text(incomeRow.fiscalDateEnding);
     const cashRow = cashRows.get(date) ?? {};
     const balanceRow = balanceRows.get(date) ?? {};
-    const revenue = number(incomeRow.totalRevenue);
-    const previousRevenue = index > 0 ? number(ascending[index - 1]?.totalRevenue) : null;
-    const grossProfit = number(incomeRow.grossProfit);
-    const ebit = number(incomeRow.ebit) ?? number(incomeRow.operatingIncome);
-    const ebitda = number(incomeRow.ebitda) ?? (ebit != null && number(cashRow.depreciationDepletionAndAmortization) != null ? ebit + number(cashRow.depreciationDepletionAndAmortization)! : null);
-    const tax = number(incomeRow.incomeTaxExpense);
-    const pretax = number(incomeRow.incomeBeforeTax);
-    const ocf = number(cashRow.operatingCashflow) ?? number(cashRow.operatingCashFlow);
-    const capexRaw = number(cashRow.capitalExpenditures);
+    const revenue = field(incomeRow, ["totalRevenue"]);
+    const previousRevenue = index > 0 ? field(ascending[index - 1], ["totalRevenue"]) : null;
+    const grossProfit = field(incomeRow, ["grossProfit"]);
+    const ebit = field(incomeRow, ["ebit", "operatingIncome"]);
+    const depreciation = field(cashRow, ["depreciationDepletionAndAmortization", "depreciation"]);
+    const ebitda = field(incomeRow, ["ebitda"]) ?? (ebit != null && depreciation != null ? ebit + depreciation : null);
+    const tax = field(incomeRow, ["incomeTaxExpense"]);
+    const pretax = field(incomeRow, ["incomeBeforeTax"]);
+    const ocf = field(cashRow, ["operatingCashflow", "operatingCashFlow"]);
+    const capexRaw = field(cashRow, ["capitalExpenditures"]);
     const capex = capexRaw == null ? null : Math.abs(capexRaw);
-    const fcf = ocf == null || capexRaw == null ? null : ocf + (capexRaw < 0 ? capexRaw : -capexRaw);
-    const cash = number(balanceRow.cashAndCashEquivalentsAtCarryingValue) ?? number(balanceRow.cashAndShortTermInvestments);
-    const totalDebt = number(balanceRow.shortLongTermDebtTotal) ?? sumNullable(number(balanceRow.shortTermDebt), number(balanceRow.longTermDebt));
-    const currentAssets = number(balanceRow.totalCurrentAssets);
-    const currentLiabilities = number(balanceRow.totalCurrentLiabilities);
-    const shares = number(balanceRow.commonStockSharesOutstanding);
-    return {
-      fiscalYear: date ? date.slice(0, 4) : "Unavailable",
-      fiscalDate: date || "",
-      revenue,
-      revenueGrowth: revenue != null && previousRevenue ? (revenue / previousRevenue) - 1 : null,
-      grossProfit,
-      grossMargin: ratio(grossProfit, revenue),
-      ebitda,
-      ebit,
-      ebitMargin: ratio(ebit, revenue),
-      netIncome: number(incomeRow.netIncome),
-      incomeBeforeTax: pretax,
-      taxes: tax,
-      taxRate: pretax && tax != null ? clamp(tax / pretax, 0, 0.5) : null,
-      interestExpense: Math.abs(number(incomeRow.interestExpense) ?? 0) || null,
-      operatingCashFlow: ocf,
-      capex,
-      freeCashFlow: fcf,
-      fcfMargin: ratio(fcf, revenue),
-      cash,
-      totalDebt,
-      netDebt: totalDebt != null && cash != null ? totalDebt - cash : null,
-      workingCapital: currentAssets != null && currentLiabilities != null ? currentAssets - currentLiabilities : null,
-      shares
-    } satisfies FinancialYear;
+    const fcf = ocf == null || capex == null ? null : ocf - capex;
+    const cash = field(balanceRow, ["cashAndCashEquivalentsAtCarryingValue", "cashAndShortTermInvestments"]);
+    const totalDebt = field(balanceRow, ["shortLongTermDebtTotal"]) ?? sumNullable(field(balanceRow, ["shortTermDebt", "currentDebt"]), field(balanceRow, ["longTermDebt", "longTermDebtNoncurrent"]));
+    const currentAssets = field(balanceRow, ["totalCurrentAssets"]);
+    const currentLiabilities = field(balanceRow, ["totalCurrentLiabilities"]);
+    const shares = field(balanceRow, ["commonStockSharesOutstanding"]);
+    return makeYear({ date, revenue, previousRevenue, grossProfit, ebitda, ebit, netIncome: field(incomeRow, ["netIncome"]), pretax, tax, interestExpense: field(incomeRow, ["interestExpense"]), ocf, capex, cash, totalDebt, currentAssets, currentLiabilities, shares });
   });
-  return rows.sort((a, b) => Date.parse(b.fiscalDate) - Date.parse(a.fiscalDate)).slice(0, 8);
+  return rows.filter((row) => row.revenue != null || row.freeCashFlow != null).sort(sortDescDate).slice(0, 8);
+}
+
+function buildSecHistorical(payload: SecFacts | null) {
+  if (!payload?.facts) return [] as FinancialYear[];
+  const revenue = secFactMap(payload, ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet"]);
+  const grossProfit = secFactMap(payload, ["GrossProfit"]);
+  const ebit = secFactMap(payload, ["OperatingIncomeLoss", "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest"]);
+  const netIncome = secFactMap(payload, ["NetIncomeLoss", "ProfitLoss"]);
+  const pretax = secFactMap(payload, ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest", "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"]);
+  const tax = secFactMap(payload, ["IncomeTaxExpenseBenefit"]);
+  const interest = secFactMap(payload, ["InterestExpenseNonOperating", "InterestExpense"]);
+  const ocf = secFactMap(payload, ["NetCashProvidedByUsedInOperatingActivities", "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"]);
+  const capex = secFactMap(payload, ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"]);
+  const cash = secFactMap(payload, ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents", "CashAndShortTermInvestments"]);
+  const currentDebt = secFactMap(payload, ["ShortTermBorrowings", "ShortTermDebt", "LongTermDebtCurrent"]);
+  const longDebt = secFactMap(payload, ["LongTermDebtNoncurrent", "LongTermDebt"]);
+  const totalDebt = secFactMap(payload, ["ShortLongTermDebtTotal"]);
+  const currentAssets = secFactMap(payload, ["AssetsCurrent"]);
+  const currentLiabilities = secFactMap(payload, ["LiabilitiesCurrent"]);
+  const shares = secFactMap(payload, ["EntityCommonStockSharesOutstanding", "CommonStocksIncludingAdditionalPaidInCapital"], "shares");
+  const years = Array.from(new Set([...revenue.keys(), ...ocf.keys(), ...netIncome.keys(), ...cash.keys(), ...totalDebt.keys()])).filter((year) => year > 1990).sort((a, b) => a - b);
+  const rows = years.map((year, index) => {
+    const debt = totalDebt.get(year) ?? sumNullable(currentDebt.get(year) ?? null, longDebt.get(year) ?? null);
+    const capexValue = capex.get(year) ?? null;
+    return makeYear({
+      date: `${year}-12-31`,
+      revenue: revenue.get(year) ?? null,
+      previousRevenue: index > 0 ? revenue.get(years[index - 1]) ?? null : null,
+      grossProfit: grossProfit.get(year) ?? null,
+      ebitda: null,
+      ebit: ebit.get(year) ?? null,
+      netIncome: netIncome.get(year) ?? null,
+      pretax: pretax.get(year) ?? null,
+      tax: tax.get(year) ?? null,
+      interestExpense: interest.get(year) ?? null,
+      ocf: ocf.get(year) ?? null,
+      capex: capexValue == null ? null : Math.abs(capexValue),
+      cash: cash.get(year) ?? null,
+      totalDebt: debt,
+      currentAssets: currentAssets.get(year) ?? null,
+      currentLiabilities: currentLiabilities.get(year) ?? null,
+      shares: shares.get(year) ?? null
+    });
+  });
+  return rows.filter((row) => row.revenue != null || row.freeCashFlow != null).sort(sortDescDate).slice(0, 8);
+}
+
+function secFactMap(payload: SecFacts, concepts: string[], unit = "USD") {
+  const gaap = payload.facts?.["us-gaap"] ?? {};
+  for (const concept of concepts) {
+    const units = gaap[concept]?.units;
+    const rows = units?.[unit] ?? (unit === "shares" ? units?.shares : undefined) ?? [];
+    const map = new Map<number, { value: number; filed: string }>();
+    for (const row of rows) {
+      const value = number(row.val);
+      const year = number(row.fy) ?? yearFromDate(text(row.end));
+      const form = text(row.form);
+      const frame = text(row.frame);
+      const annual = text(row.fp) === "FY" || form.startsWith("10-K") || /^CY\d{4}$/.test(frame);
+      if (!annual || value == null || !year) continue;
+      const filed = text(row.filed);
+      const existing = map.get(year);
+      if (!existing || filed > existing.filed) map.set(year, { value, filed });
+    }
+    if (map.size) return new Map(Array.from(map.entries()).map(([year, row]) => [year, row.value]));
+  }
+  return new Map<number, number>();
+}
+
+function makeYear(input: { date: string; revenue: number | null; previousRevenue: number | null; grossProfit: number | null; ebitda: number | null; ebit: number | null; netIncome: number | null; pretax: number | null; tax: number | null; interestExpense: number | null; ocf: number | null; capex: number | null; cash: number | null; totalDebt: number | null; currentAssets: number | null; currentLiabilities: number | null; shares: number | null }) {
+  const fcf = input.ocf == null || input.capex == null ? null : input.ocf - input.capex;
+  return {
+    fiscalYear: input.date ? input.date.slice(0, 4) : "Unavailable",
+    fiscalDate: input.date || "",
+    revenue: input.revenue,
+    revenueGrowth: input.revenue != null && input.previousRevenue ? input.revenue / input.previousRevenue - 1 : null,
+    grossProfit: input.grossProfit,
+    grossMargin: ratio(input.grossProfit, input.revenue),
+    ebitda: input.ebitda,
+    ebit: input.ebit,
+    ebitMargin: ratio(input.ebit, input.revenue),
+    netIncome: input.netIncome,
+    incomeBeforeTax: input.pretax,
+    taxes: input.tax,
+    taxRate: input.pretax && input.tax != null ? clamp(input.tax / input.pretax, 0, 0.5) : null,
+    interestExpense: input.interestExpense == null ? null : Math.abs(input.interestExpense),
+    operatingCashFlow: input.ocf,
+    capex: input.capex,
+    freeCashFlow: fcf,
+    fcfMargin: ratio(fcf, input.revenue),
+    cash: input.cash,
+    totalDebt: input.totalDebt,
+    netDebt: input.totalDebt != null && input.cash != null ? input.totalDebt - input.cash : null,
+    workingCapital: input.currentAssets != null && input.currentLiabilities != null ? input.currentAssets - input.currentLiabilities : null,
+    shares: input.shares
+  } satisfies FinancialYear;
+}
+
+function mergeHistorical(alphaRows: FinancialYear[], secRows: FinancialYear[]) {
+  const byYear = new Map<string, FinancialYear>();
+  for (const row of secRows) byYear.set(row.fiscalYear, row);
+  for (const row of alphaRows) byYear.set(row.fiscalYear, mergeYear(row, byYear.get(row.fiscalYear)));
+  return Array.from(byYear.values()).sort(sortDescDate).slice(0, 8);
+}
+
+function mergeYear(primary: FinancialYear, fallback?: FinancialYear) {
+  if (!fallback) return primary;
+  return Object.fromEntries(Object.keys(primary).map((key) => [key, (primary as Record<string, unknown>)[key] ?? (fallback as Record<string, unknown>)[key]])) as FinancialYear;
 }
 
 function buildWacc(input: { riskFreeRate: number; beta: number; taxRate: number; marketCap: number | null; debt: number | null; preTaxCostOfDebt: number }) {
@@ -433,10 +561,10 @@ function buildWacc(input: { riskFreeRate: number; beta: number; taxRate: number;
 
 function buildScenarios(input: { revenue: number | null; revenueGrowthTrend: number | null; fcfMargin: number | null; netDebt: number | null; shares: number | null; price: number | null; wacc: WaccDetail; latest: FinancialYear | null; marketCap: number | null }) {
   const baseGrowth = input.revenueGrowthTrend == null ? null : clamp(input.revenueGrowthTrend, -0.04, 0.16);
-  const baseMargin = input.fcfMargin == null ? null : clamp(input.fcfMargin, -0.1, 0.4);
+  const baseMargin = input.fcfMargin == null ? null : clamp(input.fcfMargin, 0.01, 0.4);
   const baseWacc = input.wacc.wacc == null ? null : clamp(input.wacc.wacc, 0.055, 0.16);
   const configs: Array<{ name: Scenario["name"]; probability: number; growth: number | null; margin: number | null; wacc: number | null; terminal: number; multiple: number; bull: string; bear: string; base: string }> = [
-    { name: "No-Growth / Downside Case", probability: 20, growth: baseGrowth == null ? null : clamp(Math.min(0.01, baseGrowth - 0.05), -0.06, 0.03), margin: baseMargin == null ? null : Math.max(-0.05, baseMargin - 0.035), wacc: baseWacc == null ? null : baseWacc + 0.015, terminal: 0.01, multiple: 8, bull: "Downside is limited if cash generation stabilizes and filing/news risk stays routine.", bear: "Margins compress, growth stalls, and the market applies a higher discount rate.", base: "Stress case uses no-growth assumptions and lower source-derived FCF margin." },
+    { name: "No-Growth / Downside Case", probability: 20, growth: baseGrowth == null ? null : clamp(Math.min(0.01, baseGrowth - 0.05), -0.06, 0.03), margin: baseMargin == null ? null : Math.max(0.005, baseMargin - 0.035), wacc: baseWacc == null ? null : baseWacc + 0.015, terminal: 0.01, multiple: 8, bull: "Downside is limited if cash generation stabilizes and filing/news risk stays routine.", bear: "Margins compress, growth stalls, and the market applies a higher discount rate.", base: "Stress case uses no-growth assumptions and lower source-derived FCF margin." },
     { name: "Base Case", probability: 55, growth: baseGrowth, margin: baseMargin, wacc: baseWacc, terminal: 0.025, multiple: 12, bull: "Base case can improve if revenue growth and FCF conversion beat the historical trend.", bear: "Base case weakens if the latest FCF margin is not sustainable.", base: "Uses source-derived historical revenue trend, FCF margin, and WACC inputs." },
     { name: "Growth Case", probability: 25, growth: baseGrowth == null ? null : clamp(baseGrowth + 0.04, 0.02, 0.22), margin: baseMargin == null ? null : Math.min(0.48, baseMargin + 0.025), wacc: baseWacc == null ? null : Math.max(0.05, baseWacc - 0.0075), terminal: 0.03, multiple: 15, bull: "Growth case requires revenue acceleration, durable margins, and no major adverse filing/news changes.", bear: "Growth case fails if valuation already discounts aggressive terminal assumptions.", base: "Upside case raises growth and FCF margin from the source-derived base." }
   ];
@@ -460,20 +588,17 @@ function calculateDcf(input: { revenue: number | null; revenueGrowth: number | n
   let revenue = input.revenue;
   let presentValue = 0;
   let finalFcf = 0;
-  const forecastRows = [] as number[];
   for (let year = 1; year <= 5; year += 1) {
     revenue *= 1 + input.revenueGrowth;
     const fcf = revenue * input.fcfMargin;
     finalFcf = fcf;
-    const pv = fcf / Math.pow(1 + input.wacc, year);
-    presentValue += pv;
-    forecastRows.push(pv);
+    presentValue += fcf / Math.pow(1 + input.wacc, year);
   }
   const terminalValue = (finalFcf * (1 + input.terminalGrowth)) / (input.wacc - input.terminalGrowth);
   const presentTerminalValue = terminalValue / Math.pow(1 + input.wacc, 5);
   const enterpriseValue = presentValue + presentTerminalValue;
   const equityValue = enterpriseValue - input.netDebt;
-  return { enterpriseValue, equityValue, valuePerShare: equityValue / input.shares, terminalValuePercent: enterpriseValue ? (presentTerminalValue / enterpriseValue) * 100 : null, forecastRows };
+  return { enterpriseValue, equityValue, valuePerShare: equityValue / input.shares, terminalValuePercent: enterpriseValue ? (presentTerminalValue / enterpriseValue) * 100 : null };
 }
 
 function buildForecastRows(revenue: number | null, scenario: Scenario) {
@@ -488,15 +613,16 @@ function buildForecastRows(revenue: number | null, scenario: Scenario) {
   return rows;
 }
 
-function buildSensitivity(input: { revenue: number | null; fcfMargin: number | null; netDebt: number | null; shares: number | null; wacc: number | null; price: number | null }) {
+function buildSensitivity(input: { revenue: number | null; revenueGrowth: number | null; fcfMargin: number | null; netDebt: number | null; shares: number | null; wacc: number | null }) {
   const baseWacc = input.wacc ?? 0.095;
+  const growth = input.revenueGrowth ?? 0.035;
   const waccValues = [-0.015, -0.01, -0.005, 0, 0.005, 0.01, 0.015].map((delta) => clamp(baseWacc + delta, 0.045, 0.18));
   const terminalGrowthValues = [0.015, 0.02, 0.025, 0.03, 0.035, 0.04];
   const rows = waccValues.map((wacc) => ({
     wacc,
     values: terminalGrowthValues.map((terminalGrowthRate) => ({
       terminalGrowthRate,
-      valuePerShare: calculateDcf({ revenue: input.revenue, revenueGrowth: 0.04, fcfMargin: input.fcfMargin, wacc, terminalGrowth: Math.min(terminalGrowthRate, wacc - 0.005), netDebt: input.netDebt, shares: input.shares })?.valuePerShare ?? null
+      valuePerShare: calculateDcf({ revenue: input.revenue, revenueGrowth: growth, fcfMargin: input.fcfMargin, wacc, terminalGrowth: Math.min(terminalGrowthRate, wacc - 0.005), netDebt: input.netDebt, shares: input.shares })?.valuePerShare ?? null
     }))
   }));
   return { waccValues, terminalGrowthValues, rows };
@@ -521,44 +647,16 @@ function buildPredictions(input: { scenarios: Scenario[]; price: number | null; 
     });
   }
   if (input.analystTargetPrice != null && input.price) {
-    predictions.push({
-      label: "Street target gap",
-      prediction: input.analystTargetPrice > input.price ? "Analyst target price is above the current quote." : "Analyst target price is below or near the current quote.",
-      probability: clampInt(Math.round(50 + Math.min(22, Math.abs((input.analystTargetPrice - input.price) / input.price) * 70)), 50, 72),
-      timeHorizon: "3-12 months",
-      evidence: [`Analyst target ${roundMoney(input.analystTargetPrice)}`, `Current quote ${roundMoney(input.price)}`],
-      watchItems: ["Verify target source and date", "Compare to base/growth DCF range"]
-    });
+    predictions.push({ label: "Street target gap", prediction: input.analystTargetPrice > input.price ? "Analyst target price is above the current quote." : "Analyst target price is below or near the current quote.", probability: clampInt(Math.round(50 + Math.min(22, Math.abs((input.analystTargetPrice - input.price) / input.price) * 70)), 50, 72), timeHorizon: "3-12 months", evidence: [`Analyst target ${roundMoney(input.analystTargetPrice)}`, `Current quote ${roundMoney(input.price)}`], watchItems: ["Verify target source and date", "Compare to base/growth DCF range"] });
   }
   if (growth?.intrinsicValuePerShare != null && downside?.intrinsicValuePerShare != null) {
-    predictions.push({
-      label: "Scenario skew",
-      prediction: Math.abs((growth.upsideDownsidePercent ?? 0)) > Math.abs((downside.upsideDownsidePercent ?? 0)) ? "Scenario range is skewed toward upside if growth and margins hold." : "Scenario range is skewed toward downside if margins or discount rate worsen.",
-      probability: 58,
-      timeHorizon: "1-3 years",
-      evidence: [`Growth case ${roundMoney(growth.intrinsicValuePerShare)}`, `Downside case ${roundMoney(downside.intrinsicValuePerShare)}`],
-      watchItems: ["Revenue growth trend", "FCF conversion", "Terminal value as percent of total value"]
-    });
+    predictions.push({ label: "Scenario skew", prediction: Math.abs(growth.upsideDownsidePercent ?? 0) > Math.abs(downside.upsideDownsidePercent ?? 0) ? "Scenario range is skewed toward upside if growth and margins hold." : "Scenario range is skewed toward downside if margins or discount rate worsens.", probability: 58, timeHorizon: "1-3 years", evidence: [`Growth case ${roundMoney(growth.intrinsicValuePerShare)}`, `Downside case ${roundMoney(downside.intrinsicValuePerShare)}`], watchItems: ["Revenue growth trend", "FCF conversion", "Terminal value as percent of total value"] });
   }
   if (severeNews.length || materialFilings.length) {
-    predictions.push({
-      label: "Disclosure/news risk",
-      prediction: "Recent high-severity news or material filings increase model-risk and should be reviewed before relying on the DCF.",
-      probability: clampInt(52 + severeNews.length * 5 + materialFilings.length * 4, 52, 82),
-      timeHorizon: "Now to next reporting event",
-      evidence: [...severeNews.slice(0, 3).map((item) => item.title), ...materialFilings.slice(0, 3).map((item) => item.title)],
-      watchItems: ["8-K and 10-Q language", "Guidance changes", "Legal/regulatory headlines"]
-    });
+    predictions.push({ label: "Disclosure/news risk", prediction: "Recent high-severity news or material filings increase model risk and should be reviewed before relying on the DCF.", probability: clampInt(52 + severeNews.length * 5 + materialFilings.length * 4, 52, 82), timeHorizon: "Now to next reporting event", evidence: [...severeNews.slice(0, 3).map((item) => item.title), ...materialFilings.slice(0, 3).map((item) => item.title)], watchItems: ["8-K and 10-Q language", "Guidance changes", "Legal/regulatory headlines"] });
   }
   if (input.wacc.riskFreeRate != null) {
-    predictions.push({
-      label: "Rate sensitivity",
-      prediction: (input.wacc.riskFreeRate ?? 0) > 0.045 ? "Higher risk-free rates keep valuation multiple sensitivity elevated." : "Rate input is moderate, but WACC sensitivity still drives terminal value.",
-      probability: clampInt(Math.round(48 + (input.wacc.riskFreeRate ?? 0) * 500), 50, 74),
-      timeHorizon: "1-6 months",
-      evidence: [`Risk-free rate ${roundPercent((input.wacc.riskFreeRate ?? 0) * 100)}`, `WACC ${roundPercent((input.wacc.wacc ?? 0) * 100)}`],
-      watchItems: ["10Y Treasury", "Credit spreads", "Fed communications"]
-    });
+    predictions.push({ label: "Rate sensitivity", prediction: (input.wacc.riskFreeRate ?? 0) > 0.045 ? "Higher risk-free rates keep valuation multiple sensitivity elevated." : "Rate input is moderate, but WACC sensitivity still drives terminal value.", probability: clampInt(Math.round(48 + (input.wacc.riskFreeRate ?? 0) * 500), 50, 74), timeHorizon: "1-6 months", evidence: [`Risk-free rate ${roundPercent((input.wacc.riskFreeRate ?? 0) * 100)}`, `WACC ${roundPercent((input.wacc.wacc ?? 0) * 100)}`], watchItems: ["10Y Treasury", "Credit spreads", "Fed communications"] });
   }
   return predictions;
 }
@@ -567,7 +665,7 @@ function buildResearch(input: { symbol: string; companyName: string | null; over
   const base = input.scenarios.find((scenario) => scenario.name === "Base Case");
   const latest = input.historical[0] ?? null;
   const severeNews = input.news.filter((item) => item.severity === "ALERT" || item.severity === "CRITICAL");
-  const risks = redFlags({ historical: input.historical, scenarios: input.scenarios, filings: input.filings, news: input.news, wacc: input.wacc });
+  const risks = redFlags({ historical: input.historical, scenarios: input.scenarios, filings: input.filings, news: input.news, wacc: input.wacc, sources: input.sources });
   const catalysts = [
     base?.upsideDownsidePercent != null && base.upsideDownsidePercent > 0 ? `Base-case upside of ${roundPercent(base.upsideDownsidePercent)} if source-derived assumptions hold.` : null,
     input.overview?.AnalystTargetPrice ? `Analyst target price from Alpha Vantage: ${input.overview.AnalystTargetPrice}.` : null,
@@ -575,10 +673,10 @@ function buildResearch(input: { symbol: string; companyName: string | null; over
     input.news.length ? `${input.news.length} recent ticker-related news rows available for review.` : null
   ].filter((item): item is string => Boolean(item));
   const sourcesUsed = Object.entries(input.sources).filter(([, status]) => status === "ok").map(([source]) => source);
-  const confidence = clampInt(30 + sourcesUsed.length * 7 + Math.min(20, input.historical.length * 3) + (base?.intrinsicValuePerShare != null ? 15 : 0), 0, 86);
+  const confidence = clampInt(30 + sourcesUsed.length * 7 + Math.min(20, input.historical.length * 3) + (base?.intrinsicValuePerShare != null ? 15 : 0), 0, 92);
   return {
     valuationSummary: base?.intrinsicValuePerShare != null ? `${input.symbol} base-case intrinsic value is ${roundMoney(base.intrinsicValuePerShare)} versus the current quote, with ${roundPercent(base.upsideDownsidePercent)} implied upside/downside.` : "DCF valuation is unavailable until revenue, FCF margin, WACC, net debt, shares, and price are available from providers.",
-    investmentMemo: `${input.companyName || input.symbol} model uses provider-backed statement history, quote data, FRED rate context, SEC filings, and ticker news where available. Treat the output as probabilistic intelligence, not financial advice. The most important manual checks are FCF quality, debt/dilution, terminal value sensitivity, and recent filings/news.` ,
+    investmentMemo: `${input.companyName || input.symbol} model uses provider-backed statement history, quote data, FRED rate context, SEC filings, and ticker news where available. Treat the output as probabilistic intelligence, not financial advice. The most important manual checks are FCF quality, debt/dilution, terminal value sensitivity, and recent filings/news.`,
     businessSummary: text(input.overview?.Description) || "Business description unavailable from Alpha Vantage for this ticker.",
     newsSummary: input.news.length ? `${input.news.length} ticker news rows loaded; ${severeNews.length} are above INFO severity.` : "No ticker-specific news rows returned by configured providers.",
     filingSummary: input.filings.length ? `${input.filings.length} recent SEC filings loaded. Review WATCH filings first.` : "No SEC filings returned. This can happen if CIK is unavailable or SEC access is not configured.",
@@ -591,15 +689,15 @@ function buildResearch(input: { symbol: string; companyName: string | null; over
   };
 }
 
-function redFlags(input: { historical: FinancialYear[]; scenarios: Scenario[]; filings: NewsRow[]; news: NewsRow[]; wacc: WaccDetail }) {
+function redFlags(input: { historical: FinancialYear[]; scenarios: Scenario[]; filings: NewsRow[]; news: NewsRow[]; wacc: WaccDetail; sources: Record<string, SourceState> }) {
   const flags: string[] = [];
   const latest = input.historical[0];
   const base = input.scenarios.find((scenario) => scenario.name === "Base Case");
-  if (!latest?.revenue) flags.push("Revenue unavailable from provider financial statements.");
-  if (latest?.freeCashFlow == null) flags.push("Free cash flow unavailable from provider cash-flow statements.");
+  if (!latest?.revenue) flags.push("Revenue unavailable from provider financial statements; model may rely on Alpha Vantage TTM revenue.");
+  if (latest?.freeCashFlow == null && input.sources.DerivedFcfMargin === "ok") flags.push("FCF margin uses a source-derived fallback from profitability because cash-flow rows were incomplete.");
   if (latest?.freeCashFlow != null && latest.freeCashFlow < 0) flags.push("Latest reported free cash flow is negative.");
-  if (latest?.netDebt == null) flags.push("Net debt could not be calculated from balance sheet debt and cash.");
-  if (!latest?.shares) flags.push("Shares outstanding unavailable or not reliable enough for per-share valuation.");
+  if (latest?.netDebt == null && input.sources.NeutralNetDebtFallback === "ok") flags.push("Net debt was unavailable, so the model uses a neutral zero-net-debt fallback and should be verified manually.");
+  if (!latest?.shares) flags.push("Shares outstanding came from market data or overview fallback; verify diluted shares manually.");
   if ((base?.terminalValuePercent ?? 0) > 80) flags.push("Terminal value is more than 80% of enterprise value, making the DCF highly sensitive to WACC and terminal growth.");
   if ((input.wacc.wacc ?? 0) < (input.wacc.riskFreeRate ?? 0)) flags.push("WACC is below the risk-free rate, so capital-structure inputs should be checked.");
   if (input.filings.some((item) => item.severity !== "INFO")) flags.push("Recent WATCH-level SEC filings require manual review.");
@@ -617,6 +715,22 @@ function trendGrowth(history: FinancialYear[]) {
   const old = history[Math.min(3, history.length - 1)]?.revenue;
   if (latest != null && old != null && old > 0 && history.length > 1) return Math.pow(latest / old, 1 / Math.min(3, history.length - 1)) - 1;
   return average(history.slice(0, 4).map((row) => row.revenueGrowth).filter(isNumber));
+}
+
+function sourceFallbackGrowth(sources: Record<string, SourceState>) {
+  sources.DerivedGrowthFallback = "ok";
+  return 0.03;
+}
+
+function fallbackFcfMargin(overview: Record<string, string> | null, sources: Record<string, SourceState>) {
+  const profitMargin = number(overview?.ProfitMargin);
+  sources.DerivedFcfMargin = profitMargin != null ? "ok" : "unavailable";
+  return profitMargin == null ? null : clamp(profitMargin * 0.82, 0.015, 0.34);
+}
+
+function neutralNetDebtFallback(sources: Record<string, SourceState>) {
+  sources.NeutralNetDebtFallback = "ok";
+  return 0;
 }
 
 function unavailable(symbol: string, sources: Record<string, SourceState>, message: string): DcfLookup {
@@ -649,8 +763,10 @@ async function fetchJson<T>(url: string, headers?: HeadersInit): Promise<T | nul
 }
 
 function newsRow(input: { title: string; source: string; url: string; summary?: string; publishedAt: string }) {
-  const textValue = `${input.title} ${input.summary ?? ""}`;
-  return { title: input.title || "Untitled", source: input.source || "News", url: input.url || "", category: category(textValue), severity: severity(textValue), publishedAt: input.publishedAt || new Date().toISOString(), summary: input.summary || "" } satisfies NewsRow;
+  const cleanTitle = truncate(input.title || "Untitled", 240);
+  const cleanSummary = truncate(input.summary || "", 700);
+  const textValue = `${cleanTitle} ${cleanSummary}`;
+  return { title: cleanTitle, source: input.source || "News", url: input.url || "", category: category(textValue), severity: severity(textValue), publishedAt: input.publishedAt || new Date().toISOString(), summary: cleanSummary } satisfies NewsRow;
 }
 
 function severity(value: string): Severity { const t = value.toLowerCase(); if (/war|missile|attack|invasion|default|crisis|earthquake|explosion|bankruptcy|emergency/.test(t)) return "CRITICAL"; if (/sanction|lawsuit|fraud|investigation|conflict|inflation|rate hike|oil spike|shortage|recall|probe/.test(t)) return "ALERT"; if (/earnings|policy|fed|oil|supply|regulation|filing|tariff|housing|jobs|guidance/.test(t)) return "WATCH"; return "INFO"; }
@@ -658,8 +774,10 @@ function category(value: string) { const t = value.toLowerCase(); if (/oil|gas|e
 function uniqueRows<T extends { title: string; url: string }>(rows: T[]) { const seen = new Set<string>(); return rows.filter((row) => { const key = row.url || row.title; if (!key || seen.has(key)) return false; seen.add(key); return Boolean(row.title); }); }
 function sanitizeSymbol(value: string) { const symbol = value.trim().toUpperCase(); return /^[A-Z0-9.-]{1,15}$/.test(symbol) ? symbol : ""; }
 function configured(value: string | undefined) { return Boolean(value && !value.startsWith("<") && !value.toLowerCase().includes("your ")); }
+function secHeaders() { return { "User-Agent": process.env.SEC_USER_AGENT || "WorldMarketWatcher/1.0 joshcjwork@gmail.com" }; }
 function number(value: unknown) { const parsed = typeof value === "number" ? value : Number(value); return Number.isFinite(parsed) ? parsed : null; }
 function text(value: unknown) { return typeof value === "string" ? value : value == null ? "" : String(value); }
+function field(row: Record<string, unknown>, names: string[]) { for (const name of names) { const value = number(row[name]); if (value != null) return value; } return null; }
 function ratio(numerator: number | null, denominator: number | null) { return numerator != null && denominator ? numerator / denominator : null; }
 function average(values: number[]) { return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null; }
 function isNumber(value: number | null | undefined): value is number { return typeof value === "number" && Number.isFinite(value); }
@@ -668,5 +786,8 @@ function clampInt(value: number, min: number, max: number) { return Math.round(c
 function sumNullable(a: number | null, b: number | null) { return a == null && b == null ? null : (a ?? 0) + (b ?? 0); }
 function normalizeCik(value: unknown) { const digits = text(value).replace(/\D/g, ""); return digits ? digits.padStart(10, "0") : ""; }
 function isoDate(daysAgo: number) { const date = new Date(); date.setUTCDate(date.getUTCDate() - daysAgo); return date.toISOString().slice(0, 10); }
+function yearFromDate(value: string) { const year = Number(value.slice(0, 4)); return Number.isFinite(year) ? year : null; }
+function sortDescDate(a: FinancialYear, b: FinancialYear) { return Date.parse(b.fiscalDate) - Date.parse(a.fiscalDate); }
+function truncate(value: string, max: number) { return value.length > max ? `${value.slice(0, max - 3)}...` : value; }
 function roundMoney(value: number | null | undefined) { return value == null || Number.isNaN(value) ? "unavailable" : `$${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`; }
 function roundPercent(value: number | null | undefined) { return value == null || Number.isNaN(value) ? "unavailable" : `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`; }
